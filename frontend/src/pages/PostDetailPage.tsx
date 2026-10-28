@@ -10,9 +10,11 @@ import {
   Share2,
   Check,
   AlertCircle,
+  Flag,
 } from 'lucide-react';
 import type { Post, Comment, AIAnalysis } from '../types';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -25,12 +27,16 @@ export const PostDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'discussion';
+  const { isAuthenticated, openAuthModal } = useAuth();
 
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportReason, setReportReason] = useState('Inappropriate, misleading, or spam content');
+  const [reportSubmitted, setReportSubmitted] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -51,6 +57,10 @@ export const PostDetailPage: React.FC = () => {
   }, [id]);
 
   const handleVote = async () => {
+    if (!isAuthenticated) {
+      openAuthModal('login');
+      return;
+    }
     if (!post) return;
     const prev = post.upvotesCount;
     const prevStatus = post.userHasUpvoted;
@@ -76,6 +86,10 @@ export const PostDetailPage: React.FC = () => {
   };
 
   const handleBookmark = async () => {
+    if (!isAuthenticated) {
+      openAuthModal('login');
+      return;
+    }
     if (!post) return;
     const prev = post.userHasBookmarked;
     setPost({ ...post, userHasBookmarked: !prev });
@@ -84,6 +98,28 @@ export const PostDetailPage: React.FC = () => {
       setPost((curr) => (curr ? { ...curr, userHasBookmarked: res.userHasBookmarked } : null));
     } catch {
       setPost((curr) => (curr ? { ...curr, userHasBookmarked: prev } : null));
+    }
+  };
+
+  const handleReportPost = async () => {
+    if (!isAuthenticated) {
+      openAuthModal('login');
+      return;
+    }
+    if (!post) return;
+    try {
+      await api.submitReport({
+        targetType: 'post',
+        targetId: post.id,
+        reason: reportReason,
+      });
+      setReportSubmitted(true);
+      setTimeout(() => {
+        setIsReporting(false);
+        setReportSubmitted(false);
+      }, 2500);
+    } catch (e: any) {
+      alert(e.message || 'Failed to submit report');
     }
   };
 
@@ -221,8 +257,62 @@ export const PostDetailPage: React.FC = () => {
             >
               <Bookmark className={`w-3.5 h-3.5 ${post.userHasBookmarked ? 'fill-current' : ''}`} />
             </button>
+
+            <button
+              onClick={() => setIsReporting(!isReporting)}
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer text-xs flex items-center gap-1"
+              title="Report content"
+            >
+              <Flag className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Report</span>
+            </button>
           </div>
         </div>
+
+        {/* Report Moderation Box */}
+        {isReporting && (
+          <div className="mb-4 p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 text-xs space-y-3">
+            {reportSubmitted ? (
+              <div className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-2">
+                <Check className="w-4 h-4" />
+                <span>Thank you. Report received and queued for moderation review.</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <Flag className="w-3.5 h-3.5 text-rose-500" />
+                    Report Discussion to Moderators
+                  </span>
+                  <button
+                    onClick={() => setIsReporting(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">Select reason:</label>
+                  <select
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs"
+                  >
+                    <option value="Inappropriate, misleading, or spam content">Inappropriate, misleading, or spam content</option>
+                    <option value="Harassment or policy violation">Harassment or policy violation</option>
+                    <option value="Commercial solicitation without disclosure">Commercial solicitation without disclosure</option>
+                    <option value="Duplicate or irrelevant review request">Duplicate or irrelevant review request</option>
+                  </select>
+                </div>
+                <div className="flex justify-end">
+                  <Button size="sm" variant="danger" onClick={handleReportPost}>
+                    Submit Report
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Post Title */}
         <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white leading-snug mb-3">

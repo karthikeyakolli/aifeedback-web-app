@@ -5,6 +5,7 @@ import type { FeedbackCategory, PostType } from '../types';
 import { api } from '../services/api';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+import { useAuth } from '../context/AuthContext';
 
 const CATEGORIES: FeedbackCategory[] = [
   'Productivity',
@@ -34,10 +35,16 @@ export const CreatePostPage: React.FC = () => {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isAuthenticated, openAuthModal } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!isAuthenticated) {
+      openAuthModal('login');
+      return;
+    }
 
     if (title.trim().length < 5) {
       setError('Title must be at least 5 characters long.');

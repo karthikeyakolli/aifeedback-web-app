@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserX, Send, CornerDownRight } from 'lucide-react';
 import { Button } from '../common/Button';
+import { useAuth } from '../../context/AuthContext';
 
 interface CommentComposerProps {
   postId?: string;
@@ -18,6 +19,7 @@ export const CommentComposer: React.FC<CommentComposerProps> = ({
   onCancelReply,
   placeholder = 'Add a constructive review, critique, or suggestion...',
 }) => {
+  const { isAuthenticated, openAuthModal } = useAuth();
   const [content, setContent] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,6 +27,11 @@ export const CommentComposer: React.FC<CommentComposerProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim() || isSubmitting) return;
+
+    if (!isAuthenticated) {
+      openAuthModal('login');
+      return;
+    }
 
     setIsSubmitting(true);
     try {

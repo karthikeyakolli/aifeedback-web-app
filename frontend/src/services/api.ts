@@ -1,52 +1,158 @@
-import type { Post, Comment, AIAnalysis, UserProfile } from '../types';
-import { mockPosts, mockComments, mockAiAnalysis, mockCurrentUser } from '../fixtures/mockData';
+// Typed API service connecting React Frontend to FastAPI Backend.
+
+import type { Post, Comment, AIAnalysis, UserProfile, ReportPayload, AuthResponse } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
-const USE_MOCK = import.meta.env.VITE_ENABLE_MOCK_FALLBACK !== 'false';
 
-// In-memory working copies for interactive mock experience
-let inMemoryPosts: Post[] = [...mockPosts];
-let inMemoryComments: Record<string, Comment[]> = { ...mockComments };
-let inMemorySavedIds: Set<string> = new Set(['post_reflect_01']);
+export const TOKEN_STORAGE_KEY = 'pri_auth_token';
 
-// Simulated delay helper
-const delay = (ms: number = 250) => new Promise((resolve) => setTimeout(resolve, ms));
+export const getStoredToken = (): string | null => {
+  return localStorage.getItem(TOKEN_STORAGE_KEY);
+};
+
+export const setStoredToken = (token: string): void => {
+  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+};
+
+export const clearStoredToken = (): void => {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+};
+
+const getHeaders = (includeAuth: boolean = true): HeadersInit => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (includeAuth) {
+    const token = getStoredToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  return headers;
+};
 
 export const api = {
-  // Posts
-  async getPosts(category?: string, sort: string = 'trending'): Promise<Post[]> {
-    if (USE_MOCK) {
-      await delay();
-      let results = [...inMemoryPosts];
-      if (category && category !== 'All') {
-        results = results.filter((p) => p.category === category);
+  // ---------------------------------------------------------------------------
+  // Authentication & Session
+  // ---------------------------------------------------------------------------
+  async signup(data: {
+    email: string;
+    password: string;
+    username: string;
+    displayName: string;
+    bio?: string;
+  }): Promise<AuthResponse> {
+    const res = await fetch(`${API_BASE}/auth/signup`, {
+      method: 'POST',
+      headers: getHeaders(false),
+      body: JSON.stringify({
+        email: data.email,
+        password: data.password,
+        username: data.username,
+        display_name: data.displayName,
+        bio: data.bio || '',
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Registration failed' }));
+      throw new Error(err.detail || 'Registration failed');
+    }
+    const authData: AuthResponse = await res.json();
+    setStoredToken(authData.accessToken);
+    return authData;
+  },
+
+  async login(data: { email: string; password: string }): Promise<AuthResponse> {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: getHeaders(false),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Login failed' }));
+      throw new Error(err.detail || 'Invalid email or password');
+    }
+    const authData: AuthResponse = await res.json();
+    setStoredToken(authData.accessToken);
+    return authData;
+  },
+
+  async getCurrentUser(): Promise<UserProfile> {
+    const token = getStoredToken();
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      clearStoredToken();
+      throw new Error('Session expired or invalid');
+    }
+    return res.json();
+  },
+
+  async logout(): Promise<void> {
+    const token = getStoredToken();
+    if (token) {
+      try {
+        await fetch(`${API_BASE}/auth/logout`, {
+          method: 'POST',
+          headers: getHeaders(true),
+        });
+      } catch {
+        // Clear token regardless of server response
       }
-      if (sort === 'trending') {
-        results.sort((a, b) => b.upvotesCount - a.upvotesCount);
-      } else if (sort === 'recent') {
-        results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      } else if (sort === 'comments') {
-        results.sort((a, b) => b.commentsCount - a.commentsCount);
+    }
+    clearStoredToken();
+  },
+
+  // ---------------------------------------------------------------------------
+  // Posts CRUD, Voting, Bookmarks
+  // ---------------------------------------------------------------------------
+  async getPosts(
+    categoryOrParams?: string | {
+      category?: string;
+      sort?: string;
+      search?: string;
+      tag?: string;
+      limit?: number;
+      offset?: number;
+    },
+    sortParam: string = 'trending'
+  ): Promise<Post[]> {
+    const q = new URLSearchParams();
+    if (typeof categoryOrParams === 'string') {
+      if (categoryOrParams && categoryOrParams !== 'All') {
+        q.append('category', categoryOrParams);
       }
-      return results;
+      if (sortParam) q.append('sort', sortParam);
+    } else if (categoryOrParams) {
+      if (categoryOrParams.category && categoryOrParams.category !== 'All') {
+        q.append('category', categoryOrParams.category);
+      }
+      if (categoryOrParams.sort) q.append('sort', categoryOrParams.sort);
+      if (categoryOrParams.search && categoryOrParams.search.trim()) {
+        q.append('search', categoryOrParams.search.trim());
+      }
+      if (categoryOrParams.tag && categoryOrParams.tag.trim()) {
+        q.append('tag', categoryOrParams.tag.trim());
+      }
+      if (categoryOrParams.limit) q.append('limit', categoryOrParams.limit.toString());
+      if (categoryOrParams.offset) q.append('offset', categoryOrParams.offset.toString());
     }
 
-    const params = new URLSearchParams();
-    if (category && category !== 'All') params.append('category', category);
-    params.append('sort', sort);
-    const res = await fetch(`${API_BASE}/posts?${params.toString()}`);
+    const res = await fetch(`${API_BASE}/posts?${q.toString()}`, {
+      headers: getHeaders(true),
+    });
     if (!res.ok) throw new Error('Failed to fetch posts');
     return res.json();
   },
 
   async getPostById(postId: string): Promise<Post | null> {
-    if (USE_MOCK) {
-      await delay();
-      const post = inMemoryPosts.find((p) => p.id === postId);
-      return post || null;
-    }
-
-    const res = await fetch(`${API_BASE}/posts/${postId}`);
+    const res = await fetch(`${API_BASE}/posts/${postId}`, {
+      headers: getHeaders(true),
+    });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error('Failed to fetch post');
     return res.json();
@@ -61,94 +167,90 @@ export const api = {
     tags: string[];
     isAnonymous: boolean;
   }): Promise<Post> {
-    if (USE_MOCK) {
-      await delay(400);
-      const newPost: Post = {
-        id: `post_${Date.now()}`,
-        title: data.title,
-        description: data.description,
-        category: data.category,
-        postType: data.postType,
-        productUrl: data.productUrl,
-        tags: data.tags,
-        author: data.isAnonymous
-          ? { username: 'anonymous', displayName: 'Anonymous Contributor', isAnonymous: true }
-          : { ...mockCurrentUser, isAnonymous: false },
-        isAnonymous: data.isAnonymous,
-        upvotesCount: 1,
-        commentsCount: 0,
-        hasAiAnalysis: false,
-        status: 'published',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        userHasUpvoted: true,
-        userHasBookmarked: false,
-      };
-      inMemoryPosts = [newPost, ...inMemoryPosts];
-      return newPost;
-    }
-
     const res = await fetch(`${API_BASE}/posts`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(true),
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Failed to create post');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to create post' }));
+      throw new Error(err.detail || 'Failed to create post');
+    }
     return res.json();
   },
 
-  async toggleUpvotePost(postId: string): Promise<{ upvotesCount: number; userHasUpvoted: boolean }> {
-    if (USE_MOCK) {
-      await delay(150);
-      const post = inMemoryPosts.find((p) => p.id === postId);
-      if (!post) throw new Error('Post not found');
-      post.userHasUpvoted = !post.userHasUpvoted;
-      post.upvotesCount += post.userHasUpvoted ? 1 : -1;
-      return { upvotesCount: post.upvotesCount, userHasUpvoted: post.userHasUpvoted };
+  async updatePost(
+    postId: string,
+    data: {
+      title?: string;
+      description?: string;
+      category?: string;
+      productUrl?: string;
+      tags?: string[];
     }
+  ): Promise<Post> {
+    const res = await fetch(`${API_BASE}/posts/${postId}`, {
+      method: 'PUT',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update post' }));
+      throw new Error(err.detail || 'Failed to update post');
+    }
+    return res.json();
+  },
 
-    const res = await fetch(`${API_BASE}/posts/${postId}/vote`, { method: 'POST' });
-    if (!res.ok) throw new Error('Failed to toggle upvote');
+  async deletePost(postId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/posts/${postId}`, {
+      method: 'DELETE',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to delete post' }));
+      throw new Error(err.detail || 'Failed to delete post');
+    }
+  },
+
+  async toggleUpvotePost(postId: string): Promise<{ upvotesCount: number; userHasUpvoted: boolean }> {
+    const res = await fetch(`${API_BASE}/posts/${postId}/vote`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to upvote post' }));
+      throw new Error(err.detail || 'Authentication required to vote');
+    }
     return res.json();
   },
 
   async toggleBookmarkPost(postId: string): Promise<{ userHasBookmarked: boolean }> {
-    if (USE_MOCK) {
-      await delay(150);
-      const post = inMemoryPosts.find((p) => p.id === postId);
-      if (!post) throw new Error('Post not found');
-      if (inMemorySavedIds.has(postId)) {
-        inMemorySavedIds.delete(postId);
-        post.userHasBookmarked = false;
-      } else {
-        inMemorySavedIds.add(postId);
-        post.userHasBookmarked = true;
-      }
-      return { userHasBookmarked: post.userHasBookmarked };
+    const res = await fetch(`${API_BASE}/posts/${postId}/bookmark`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to bookmark post' }));
+      throw new Error(err.detail || 'Authentication required to bookmark');
     }
-
-    const res = await fetch(`${API_BASE}/posts/${postId}/bookmark`, { method: 'POST' });
-    if (!res.ok) throw new Error('Failed to toggle bookmark');
     return res.json();
   },
 
   async getSavedPosts(): Promise<Post[]> {
-    if (USE_MOCK) {
-      await delay();
-      return inMemoryPosts.filter((p) => inMemorySavedIds.has(p.id));
-    }
-    const res = await fetch(`${API_BASE}/posts/saved`);
+    const res = await fetch(`${API_BASE}/posts/saved`, {
+      headers: getHeaders(true),
+    });
     if (!res.ok) throw new Error('Failed to fetch saved posts');
     return res.json();
   },
 
-  // Comments
+  // ---------------------------------------------------------------------------
+  // Comments CRUD, Threaded Replies, Voting
+  // ---------------------------------------------------------------------------
   async getComments(postId: string): Promise<Comment[]> {
-    if (USE_MOCK) {
-      await delay();
-      return inMemoryComments[postId] || [];
-    }
-    const res = await fetch(`${API_BASE}/comments/post/${postId}`);
+    const res = await fetch(`${API_BASE}/comments/post/${postId}`, {
+      headers: getHeaders(true),
+    });
     if (!res.ok) throw new Error('Failed to fetch comments');
     return res.json();
   },
@@ -159,133 +261,100 @@ export const api = {
     isAnonymous: boolean;
     parentCommentId?: string;
   }): Promise<Comment> {
-    if (USE_MOCK) {
-      await delay(300);
-      const newComment: Comment = {
-        id: `cmt_${Date.now()}`,
-        postId: data.postId,
-        parentCommentId: data.parentCommentId,
-        author: data.isAnonymous
-          ? { username: 'anonymous', displayName: 'Anonymous Reviewer', isAnonymous: true }
-          : { ...mockCurrentUser, isAnonymous: false },
-        content: data.content,
-        isAnonymous: data.isAnonymous,
-        upvotesCount: 0,
-        isHelpfulFlag: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        userHasUpvoted: false,
-        replies: [],
-      };
-
-      if (!inMemoryComments[data.postId]) {
-        inMemoryComments[data.postId] = [];
-      }
-
-      if (data.parentCommentId) {
-        const findAndAdd = (list: Comment[]): boolean => {
-          for (const c of list) {
-            if (c.id === data.parentCommentId) {
-              c.replies = c.replies ? [...c.replies, newComment] : [newComment];
-              return true;
-            }
-            if (c.replies && findAndAdd(c.replies)) return true;
-          }
-          return false;
-        };
-        findAndAdd(inMemoryComments[data.postId]);
-      } else {
-        inMemoryComments[data.postId].push(newComment);
-      }
-
-      // Increment comment count on post
-      const post = inMemoryPosts.find((p) => p.id === data.postId);
-      if (post) post.commentsCount += 1;
-
-      return newComment;
-    }
-
     const res = await fetch(`${API_BASE}/comments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(true),
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Failed to add comment');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to add comment' }));
+      throw new Error(err.detail || 'Failed to add comment');
+    }
     return res.json();
+  },
+
+  async updateComment(commentId: string, content: string): Promise<Comment> {
+    const res = await fetch(`${API_BASE}/comments/${commentId}`, {
+      method: 'PUT',
+      headers: getHeaders(true),
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update comment' }));
+      throw new Error(err.detail || 'Failed to update comment');
+    }
+    return res.json();
+  },
+
+  async deleteComment(commentId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/comments/${commentId}`, {
+      method: 'DELETE',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to delete comment' }));
+      throw new Error(err.detail || 'Failed to delete comment');
+    }
   },
 
   async toggleUpvoteComment(
     commentId: string
   ): Promise<{ upvotesCount: number; userHasUpvoted: boolean }> {
-    if (USE_MOCK) {
-      await delay(150);
-      let target: Comment | undefined;
-      for (const list of Object.values(inMemoryComments)) {
-        const findInTree = (items: Comment[]): Comment | undefined => {
-          for (const item of items) {
-            if (item.id === commentId) return item;
-            if (item.replies) {
-              const res = findInTree(item.replies);
-              if (res) return res;
-            }
-          }
-          return undefined;
-        };
-        target = findInTree(list);
-        if (target) break;
-      }
-
-      if (!target) throw new Error('Comment not found');
-      target.userHasUpvoted = !target.userHasUpvoted;
-      target.upvotesCount += target.userHasUpvoted ? 1 : -1;
-      return { upvotesCount: target.upvotesCount, userHasUpvoted: target.userHasUpvoted };
+    const res = await fetch(`${API_BASE}/comments/${commentId}/vote`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to vote on comment' }));
+      throw new Error(err.detail || 'Authentication required to vote');
     }
-
-    const res = await fetch(`${API_BASE}/comments/${commentId}/vote`, { method: 'POST' });
-    if (!res.ok) throw new Error('Failed to toggle comment vote');
     return res.json();
   },
 
-  // AI Intelligence
+  // ---------------------------------------------------------------------------
+  // Reports & Moderation
+  // ---------------------------------------------------------------------------
+  async submitReport(payload: ReportPayload): Promise<{ id: string; message: string }> {
+    const res = await fetch(`${API_BASE}/reports`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to submit report' }));
+      throw new Error(err.detail || 'Failed to submit report');
+    }
+    return res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // User Public Profiles
+  // ---------------------------------------------------------------------------
+  async getUserPublicProfile(userId: string): Promise<UserProfile & { posts: Post[] }> {
+    const res = await fetch(`${API_BASE}/users/${userId}/profile`, {
+      headers: getHeaders(false),
+    });
+    if (!res.ok) throw new Error('User profile not found');
+    return res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // AI Research Insights (Phase 2 Stub / Unavailable State)
+  // ---------------------------------------------------------------------------
   async getAiAnalysis(postId: string): Promise<AIAnalysis | null> {
-    if (USE_MOCK) {
-      await delay(350);
-      return mockAiAnalysis[postId] || null;
+    try {
+      const res = await fetch(`${API_BASE}/ai/${postId}/insights`, {
+        headers: getHeaders(true),
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
     }
-
-    const res = await fetch(`${API_BASE}/ai/${postId}/insights`);
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error('Failed to fetch AI insights');
-    return res.json();
   },
 
-  async triggerAiAnalysis(postId: string): Promise<AIAnalysis> {
-    if (USE_MOCK) {
-      await delay(1200); // Simulate analytical synthesis
-      const existing = mockAiAnalysis[postId];
-      if (existing) {
-        return {
-          ...existing,
-          createdAt: new Date().toISOString(),
-          isCached: false,
-        };
-      }
-      throw new Error('Analysis synthesis for new posts will be enabled in Phase 3.');
-    }
-
-    const res = await fetch(`${API_BASE}/ai/${postId}/analyze`, { method: 'POST' });
-    if (!res.ok) throw new Error('Failed to trigger AI analysis');
-    return res.json();
-  },
-
-  // User Profile
-  async getCurrentUser(): Promise<UserProfile> {
-    if (USE_MOCK) {
-      await delay();
-      return mockCurrentUser;
-    }
-    const res = await fetch(`${API_BASE}/users/me`);
-    if (!res.ok) throw new Error('Failed to fetch user profile');
-    return res.json();
+  async triggerAiAnalysis(_postId: string): Promise<AIAnalysis> {
+    throw new Error('The AI Research Synthesis Engine is scheduled for Phase 3. Real community persistence is currently live.');
   },
 };

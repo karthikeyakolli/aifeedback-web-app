@@ -1,24 +1,32 @@
-"""Pydantic schemas for Posts and Feed interactions."""
+"""Pydantic schemas for Posts and Feed interactions with dual camelCase/snake_case support."""
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, ConfigDict, AliasChoices
 
 
 class PostBase(BaseModel):
-    title: str = Field(..., min_length=5, max_length=150, description="Post title")
+    model_config = ConfigDict(populate_by_name=True)
+
+    title: str = Field(..., min_length=5, max_length=200, description="Post title")
     description: str = Field(..., min_length=10, description="Post body or review request description")
-    post_type: str = Field(
+    postType: str = Field(
         default="product_review",
+        validation_alias=AliasChoices("postType", "post_type"),
         description="Type: product_review, idea_critique, problem_discovery, general_feedback",
     )
-    product_url: Optional[str] = Field(None, description="Optional website or repository URL")
+    productUrl: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("productUrl", "product_url"),
+        description="Optional website or repository URL",
+    )
     category: str = Field(..., description="Category, e.g., Developer Tools, Productivity, AI/ML")
     tags: List[str] = Field(default_factory=list, description="Associated topic tags")
-    is_anonymous: bool = Field(
-        default=False, description="Whether author chooses anonymous public display"
+    isAnonymous: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("isAnonymous", "is_anonymous"),
+        description="Whether author chooses anonymous public display",
     )
 
 
@@ -29,34 +37,49 @@ class PostCreate(PostBase):
 
 class PostUpdate(BaseModel):
     """Payload for updating an existing post."""
+    model_config = ConfigDict(populate_by_name=True)
 
-    title: Optional[str] = Field(None, min_length=5, max_length=150)
+    title: Optional[str] = Field(None, min_length=5, max_length=200)
     description: Optional[str] = Field(None, min_length=10)
-    product_url: Optional[str] = None
+    productUrl: Optional[str] = Field(None, validation_alias=AliasChoices("productUrl", "product_url"))
     category: Optional[str] = None
     tags: Optional[List[str]] = None
 
 
 class PostAuthor(BaseModel):
     """Public author profile information."""
+    model_config = ConfigDict(populate_by_name=True)
 
     id: Optional[str] = None
     username: str
-    display_name: str
-    avatar_url: Optional[str] = None
-    is_anonymous: bool = False
+    displayName: str = Field(..., validation_alias=AliasChoices("displayName", "display_name"))
+    avatarUrl: Optional[str] = Field(None, validation_alias=AliasChoices("avatarUrl", "avatar_url"))
+    reputationScore: Optional[int] = Field(0, validation_alias=AliasChoices("reputationScore", "reputation_score"))
+    isAnonymous: bool = Field(False, validation_alias=AliasChoices("isAnonymous", "is_anonymous"))
 
 
 class PostResponse(PostBase):
     """Full serialized post response."""
+    model_config = ConfigDict(populate_by_name=True)
 
     id: str
     author: PostAuthor
-    upvotes_count: int = 0
-    comments_count: int = 0
-    has_ai_analysis: bool = False
+    upvotesCount: int = Field(0, validation_alias=AliasChoices("upvotesCount", "upvotes_count"))
+    commentsCount: int = Field(0, validation_alias=AliasChoices("commentsCount", "comments_count"))
+    hasAiAnalysis: bool = Field(False, validation_alias=AliasChoices("hasAiAnalysis", "has_ai_analysis"))
     status: str = "published"
-    created_at: str
-    updated_at: str
-    user_has_upvoted: bool = False
-    user_has_bookmarked: bool = False
+    createdAt: str = Field(..., validation_alias=AliasChoices("createdAt", "created_at"))
+    updatedAt: str = Field(..., validation_alias=AliasChoices("updatedAt", "updated_at"))
+    userHasUpvoted: bool = Field(False, validation_alias=AliasChoices("userHasUpvoted", "user_has_upvoted"))
+    userHasBookmarked: bool = Field(False, validation_alias=AliasChoices("userHasBookmarked", "user_has_bookmarked"))
+
+
+class PostVoteResponse(BaseModel):
+    """Vote toggle response."""
+    upvotesCount: int
+    userHasUpvoted: bool
+
+
+class PostBookmarkResponse(BaseModel):
+    """Bookmark toggle response."""
+    userHasBookmarked: bool

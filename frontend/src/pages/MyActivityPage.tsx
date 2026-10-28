@@ -8,15 +8,32 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 
 export const MyActivityPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuth();
   const [myPosts, setMyPosts] = useState<Post[]>([]);
 
   useEffect(() => {
+    if (!user) return;
     api.getPosts().then((posts) => {
-      // Filter posts authored by current demo user
+      // Filter posts authored by current authenticated user
       setMyPosts(posts.filter((p) => p.author.username === user?.username));
     });
   }, [user]);
+
+  if (!isAuthenticated || !user) {
+    return (
+      <div className="p-8 sm:p-12 text-center rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#101524] space-y-4 max-w-lg mx-auto my-8">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+          Sign In to View Activity
+        </h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          Sign in to view your authored product reviews, tracked discussions, and reputation score.
+        </p>
+        <Button onClick={() => openAuthModal('login')}>
+          Sign In
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

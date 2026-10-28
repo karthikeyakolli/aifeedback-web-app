@@ -9,7 +9,6 @@ import {
   Sun,
   Moon,
   Search,
-  Settings,
   Layers,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
@@ -19,7 +18,7 @@ import { Button } from '../common/Button';
 export const Navbar: React.FC = () => {
   const location = useLocation();
   const { resolvedTheme, toggleTheme } = useTheme();
-  const { user } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuth();
 
   const navLinks = [
     { to: '/', label: 'Feed', icon: <Layers className="w-4 h-4" /> },
@@ -97,29 +96,52 @@ export const Navbar: React.FC = () => {
           </button>
 
           {/* Create Post Button */}
-          <Link to="/create">
-            <Button size="sm" leftIcon={<Plus className="w-4 h-4" />}>
+          {isAuthenticated ? (
+            <Link to="/create">
+              <Button size="sm" leftIcon={<Plus className="w-4 h-4" />}>
+                <span className="hidden sm:inline">New Post</span>
+                <span className="sm:hidden">Post</span>
+              </Button>
+            </Link>
+          ) : (
+            <Button
+              size="sm"
+              leftIcon={<Plus className="w-4 h-4" />}
+              onClick={() => openAuthModal('signup')}
+            >
               <span className="hidden sm:inline">New Post</span>
               <span className="sm:hidden">Post</span>
             </Button>
-          </Link>
+          )}
 
-          {/* Settings / Profile link */}
-          <Link
-            to="/settings"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title="Settings & Privacy"
-          >
-            {user?.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt={user.displayName}
-                className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
-              />
-            ) : (
-              <Settings className="w-4 h-4" />
-            )}
-          </Link>
+          {/* User Profile or Sign In */}
+          {isAuthenticated ? (
+            <Link
+              to="/settings"
+              className="flex items-center gap-2 p-1 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title={`${user?.displayName} (@${user?.username})`}
+            >
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.displayName}
+                  className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs ring-1 ring-blue-300 dark:ring-blue-700">
+                  {user?.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
+                </div>
+              )}
+            </Link>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openAuthModal('login')}
+            >
+              Sign In
+            </Button>
+          )}
         </div>
       </div>
     </header>

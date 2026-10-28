@@ -11,10 +11,13 @@ import { MyActivityPage } from './pages/MyActivityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
+import { AuthModal } from './components/auth/AuthModal';
+
 export function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <AuthModal />
         <BrowserRouter>
           <Routes>
             <Route element={<AppLayout />}>

@@ -117,5 +117,20 @@ export interface UserProfile {
   avatarUrl?: string;
   bio?: string;
   reputationScore: number;
+  isModerator?: boolean;
   joinedAt: string;
 }
+
+export interface ReportPayload {
+  targetType: 'post' | 'comment';
+  targetId: string;
+  reason: string;
+  description?: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  tokenType: string;
+  user: UserProfile;
+}
+

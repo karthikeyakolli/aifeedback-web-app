@@ -11,6 +11,8 @@ import { CommentComposer } from './CommentComposer';
 import { formatTimeAgo } from '../../lib/utils';
 import { api } from '../../services/api';
 
+import { useAuth } from '../../context/AuthContext';
+
 interface CommentThreadProps {
   comment: Comment;
   postId: string;
@@ -24,12 +26,17 @@ export const CommentThread: React.FC<CommentThreadProps> = ({
   onAddReply,
   depth = 0,
 }) => {
+  const { isAuthenticated, openAuthModal } = useAuth();
   const [upvotes, setUpvotes] = useState(comment.upvotesCount);
   const [hasUpvoted, setHasUpvoted] = useState(comment.userHasUpvoted || false);
   const [isReplying, setIsReplying] = useState(false);
   const [isVoting, setIsVoting] = useState(false);
 
   const handleVote = async () => {
+    if (!isAuthenticated) {
+      openAuthModal('login');
+      return;
+    }
     if (isVoting) return;
     setIsVoting(true);
     const prev = upvotes;
@@ -140,7 +147,13 @@ export const CommentThread: React.FC<CommentThreadProps> = ({
           </button>
 
           <button
-            onClick={() => setIsReplying(!isReplying)}
+            onClick={() => {
+              if (!isAuthenticated) {
+                openAuthModal('login');
+                return;
+              }
+              setIsReplying(!isReplying);
+            }}
             className="inline-flex items-center gap-1 px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
           >
             <Reply className="w-3.5 h-3.5" />

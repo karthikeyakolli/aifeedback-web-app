@@ -7,7 +7,7 @@ import { Button } from '../components/common/Button';
 
 export const SettingsPage: React.FC = () => {
   const { theme, setTheme } = useTheme();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -126,10 +126,23 @@ export const SettingsPage: React.FC = () => {
             />
           </div>
 
-          <div className="pt-2">
+          <div className="pt-2 flex items-center justify-between">
             <Button type="submit" size="sm">
               Save Preferences
             </Button>
+            {user && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  await logout();
+                  window.location.reload();
+                }}
+              >
+                Sign Out
+              </Button>
+            )}
           </div>
         </Card>
       </form>
@@ -137,7 +150,7 @@ export const SettingsPage: React.FC = () => {
       {/* System & Architecture Status */}
       <Card className="p-5 sm:p-6 space-y-4">
         <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Subsystem Status (Phase 1 Foundation)
+          Subsystem Status (Phase 2 Active)
         </h2>
 
         <div className="space-y-3 text-xs">
@@ -145,8 +158,8 @@ export const SettingsPage: React.FC = () => {
             <div className="flex items-center gap-2.5">
               <Cpu className="w-4 h-4 text-blue-500" />
               <div>
-                <strong className="text-slate-800 dark:text-slate-200 block">FastAPI Backend Core</strong>
-                <span className="text-slate-400 text-[11px]">API Gateway, Health Monitoring, CORS</span>
+                <strong className="text-slate-800 dark:text-slate-200 block">FastAPI Backend Core & Community APIs</strong>
+                <span className="text-slate-400 text-[11px]">Posts, Threaded Comments, Atomic Votes, Bookmarks, Reports</span>
               </div>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
@@ -158,12 +171,12 @@ export const SettingsPage: React.FC = () => {
             <div className="flex items-center gap-2.5">
               <Database className="w-4 h-4 text-purple-500" />
               <div>
-                <strong className="text-slate-800 dark:text-slate-200 block">Supabase PostgreSQL & Auth</strong>
-                <span className="text-slate-400 text-[11px]">Schema designed, ready for Phase 2 integration</span>
+                <strong className="text-slate-800 dark:text-slate-200 block">Supabase Migration & Relational Persistence</strong>
+                <span className="text-slate-400 text-[11px]">PostgreSQL RLS Migration + Verified Local Persistence Engine</span>
               </div>
             </div>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-              Phase 2 Target
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+              Operational
             </span>
           </div>
 
@@ -172,7 +185,7 @@ export const SettingsPage: React.FC = () => {
               <Shield className="w-4 h-4 text-amber-500" />
               <div>
                 <strong className="text-slate-800 dark:text-slate-200 block">Google Gemini Intelligence Adapter</strong>
-                <span className="text-slate-400 text-[11px]">Provider interface structured, activates Phase 3</span>
+                <span className="text-slate-400 text-[11px]">Provider interface defined, scheduled for Phase 3 activation</span>
               </div>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">

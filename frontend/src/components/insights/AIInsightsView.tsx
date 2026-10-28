@@ -60,23 +60,33 @@ export const AIInsightsView: React.FC<AIInsightsViewProps> = ({
 
   if (!analysis) {
     return (
-      <Card className="p-8 text-center bg-slate-50/50 dark:bg-slate-900/30 border-dashed">
-        <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mx-auto mb-3">
+      <Card className="p-8 text-center bg-slate-50/50 dark:bg-slate-900/30 border-dashed border-slate-300 dark:border-slate-800">
+        <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-blue-600 dark:text-blue-400 mx-auto mb-3">
           <Sparkles className="w-6 h-6" />
         </div>
+        <div className="inline-block px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[11px] font-semibold mb-2">
+          Phase 3 Scope Boundary
+        </div>
         <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-1">
-          No AI Research Intelligence Generated Yet
+          AI Research Engine Activates in Phase 3
         </h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-5 leading-relaxed">
-          AI research synthesis requires at least 3 community contributions to establish qualitative patterns and evidence citations.
+          Real community contributions, persistent threaded discussions, voting, and bookmarks are active now in Phase 2. Automated qualitative thematic synthesis and evidence-backed recommendations will be activated with the Phase 3 AI Engine.
         </p>
         <Button
-          onClick={handleRefresh}
-          isLoading={isRefreshing}
+          onClick={() => {
+            setError('The AI Research Synthesis Engine is scheduled for Phase 3. Live community discussion persistence is currently active.');
+          }}
+          variant="outline"
           leftIcon={<Sparkles className="w-4 h-4" />}
         >
-          Generate Research Insights
+          Check AI Engine Status
         </Button>
+        {error && (
+          <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs text-blue-700 dark:text-blue-300 max-w-md mx-auto">
+            {error}
+          </div>
+        )}
       </Card>
     );
   }

@@ -12,6 +12,7 @@ import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
 import { formatTimeAgo } from '../../lib/utils';
 import { api } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 interface PostCardProps {
   post: Post;
@@ -19,6 +20,7 @@ interface PostCardProps {
 }
 
 export const PostCard: React.FC<PostCardProps> = ({ post }) => {
+  const { isAuthenticated, openAuthModal } = useAuth();
   const [upvotes, setUpvotes] = useState(post.upvotesCount);
   const [hasUpvoted, setHasUpvoted] = useState(post.userHasUpvoted || false);
   const [hasBookmarked, setHasBookmarked] = useState(post.userHasBookmarked || false);
@@ -27,6 +29,10 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
   const handleVote = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isAuthenticated) {
+      openAuthModal('login');
+      return;
+    }
     if (isVoting) return;
     setIsVoting(true);
 
@@ -41,7 +47,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
       const res = await api.toggleUpvotePost(post.id);
       setUpvotes(res.upvotesCount);
       setHasUpvoted(res.userHasUpvoted);
-    } catch (err) {
+    } catch {
       // Revert on error
       setUpvotes(prevVotes);
       setHasUpvoted(prevStatus);
@@ -53,6 +59,10 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
   const handleBookmark = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isAuthenticated) {
+      openAuthModal('login');
+      return;
+    }
     const prev = hasBookmarked;
     setHasBookmarked(!prev);
     try {

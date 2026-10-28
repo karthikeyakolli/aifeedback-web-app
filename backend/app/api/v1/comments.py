@@ -1,15 +1,91 @@
-"""Comments and discussion endpoints (Phase 1 structure, Phase 2 persistence)."""
+"""Comments and discussion endpoints with real persistence and threaded replies."""
 
 from __future__ import annotations
 
-from typing import List
-from fastapi import APIRouter
-from backend.app.schemas.comment import CommentResponse
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, status
+from backend.app.schemas.comment import (
+    CommentResponse,
+    CommentCreate,
+    CommentUpdate,
+    CommentVoteResponse,
+)
+from backend.app.services.auth_service import (
+    get_current_user_required,
+    get_current_user_optional,
+)
+from backend.app.db.repository import community_repo
 
 router = APIRouter(prefix="/comments", tags=["Comments"])
 
 
 @router.get("/post/{post_id}", response_model=List[CommentResponse])
-async def get_post_comments(post_id: str) -> List[CommentResponse]:
-    """Retrieves threaded comments for a post."""
-    return []
+async def get_post_comments(
+    post_id: str,
+    user: Optional[Dict[str, Any]] = Depends(get_current_user_optional),
+) -> List[CommentResponse]:
+    """Retrieves threaded comments and nested replies for a post."""
+    current_user_id = user["sub"] if user else None
+    comments = community_repo.list_comments_for_post(post_id, current_user_id=current_user_id)
+    return [CommentResponse(**c) for c in comments]
+
+
+@router.post("", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
+async def create_comment(
+    payload: CommentCreate,
+    user: Dict[str, Any] = Depends(get_current_user_required),
+) -> CommentResponse:
+    """Creates a top-level comment or threaded reply."""
+    if not payload.postId:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="postId is required to post a comment.",
+        )
+
+    comment = community_repo.create_comment(
+        post_id=payload.postId,
+        author_id=user["sub"],
+        content=payload.content,
+        is_anonymous=payload.isAnonymous,
+        parent_comment_id=payload.parentCommentId,
+    )
+    return CommentResponse(**comment)
+
+
+@router.put("/{comment_id}", response_model=CommentResponse)
+async def update_comment(
+    comment_id: str,
+    payload: CommentUpdate,
+    user: Dict[str, Any] = Depends(get_current_user_required),
+) -> CommentResponse:
+    """Updates an owned comment."""
+    updated = community_repo.update_comment(
+        comment_id=comment_id,
+        author_id=user["sub"],
+        content=payload.content,
+    )
+    return CommentResponse(**updated)
+
+
+@router.delete("/{comment_id}")
+async def delete_comment(
+    comment_id: str,
+    user: Dict[str, Any] = Depends(get_current_user_required),
+) -> Dict[str, str]:
+    """Deletes an owned comment and updates parent post counter."""
+    community_repo.delete_comment(comment_id=comment_id, author_id=user["sub"])
+    return {"message": "Comment deleted successfully."}
+
+
+@router.post("/{comment_id}/vote", response_model=CommentVoteResponse)
+async def vote_comment(
+    comment_id: str,
+    user: Dict[str, Any] = Depends(get_current_user_required),
+) -> CommentVoteResponse:
+    """Toggles upvote on a comment."""
+    res = community_repo.toggle_comment_vote(
+        comment_id=comment_id,
+        user_id=user["sub"],
+        vote_type=1,
+    )
+    return CommentVoteResponse(**res)

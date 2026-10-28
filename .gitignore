@@ -62,3 +62,7 @@ data/*.sqlite
 Thumbs.db
 models/
 artifacts/
+
+# Local Reference Code Library (Study-only, not part of application bundle)
+references/
+
