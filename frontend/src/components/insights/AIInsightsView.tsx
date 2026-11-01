@@ -476,6 +476,7 @@ export const AIInsightsView: React.FC<AIInsightsViewProps> = ({
           }`}
         >
           <NotebookSourcesRail
+            postId={postId}
             documents={sourceAvailability?.documents || []}
             comments={comments}
             selectedDocIds={selectedDocIds}
@@ -522,6 +523,17 @@ export const AIInsightsView: React.FC<AIInsightsViewProps> = ({
                 : undefined
             }
             onOpenUploadModal={() => setShowConfigModal(true)}
+            onDocumentUploaded={async () => {
+              try {
+                const sources = await api.getReviewSources(postId);
+                setSourceAvailability(sources);
+                if (sources) {
+                  setSelectedDocIds(sources.documents.map((d) => d.id));
+                }
+              } catch (err) {
+                console.error('Error refreshing sources after upload:', err);
+              }
+            }}
           />
         </div>
 

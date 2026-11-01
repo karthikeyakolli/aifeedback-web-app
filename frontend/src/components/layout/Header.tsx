@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Menu,
   Search,
@@ -14,18 +14,18 @@ import { ThemeSwitcher } from '../common/ThemeSwitcher';
 
 interface HeaderProps {
   onOpenMobileMenu: () => void;
+  onOpenCommandPalette?: () => void;
   className?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenMobileMenu,
+  onOpenCommandPalette,
   className = '',
 }) => {
   const { user, isAuthenticated, openAuthModal } = useAuth();
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const navigate = useNavigate();
 
-  // Keyboard shortcut `/` to focus search
+  // Keyboard shortcut `/` to open command palette
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -34,22 +34,12 @@ export const Header: React.FC<HeaderProps> = ({
         document.activeElement?.tagName !== 'TEXTAREA'
       ) {
         e.preventDefault();
-        searchInputRef.current?.focus();
+        onOpenCommandPalette?.();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const query = searchInputRef.current?.value.trim();
-    if (query) {
-      navigate(`/explore?search=${encodeURIComponent(query)}`);
-    } else {
-      navigate('/explore');
-    }
-  };
+  }, [onOpenCommandPalette]);
 
   return (
     <header
@@ -77,22 +67,24 @@ export const Header: React.FC<HeaderProps> = ({
           </Link>
         </div>
 
-        {/* Center: Global Search Bar */}
-        <form onSubmit={handleSearchSubmit} className="flex-1 max-w-md mx-2 sm:mx-4">
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
-            <input
-              ref={searchInputRef}
-              type="search"
-              placeholder="Search products, feedback, topics..."
-              aria-label="Search discussions and products"
-              className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-            />
-            <kbd className="hidden sm:inline-block absolute right-2.5 text-[10px] px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-700/60 text-[var(--text-muted)] font-mono pointer-events-none">
-              /
-            </kbd>
-          </div>
-        </form>
+        {/* Center: Global Search / Command Bar Trigger */}
+        <div className="flex-1 max-w-md mx-2 sm:mx-4">
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="w-full flex items-center justify-between pl-3 pr-2.5 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-secondary)] text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer text-left shadow-2xs group"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500 shrink-0 transition-colors" />
+              <span className="truncate">Search products, AI tools, commands...</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-1 shrink-0">
+              <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-700/60 text-[var(--text-muted)] font-mono">
+                ⌘K
+              </kbd>
+            </div>
+          </button>
+        </div>
 
         {/* Right: Actions, Notifications, Theme, Auth */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">

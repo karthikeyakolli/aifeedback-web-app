@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   BookOpen,
   FileText,
@@ -11,11 +11,16 @@ import {
   Plus,
   Zap,
   User,
+  UploadCloud,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 import type { Comment, DocumentSourceInfo } from '../../types';
 import { formatTimeAgo } from '../../lib/utils';
+import { api } from '../../services/api';
 
 interface NotebookSourcesRailProps {
+  postId?: string;
   documents: DocumentSourceInfo[];
   comments: Comment[];
   selectedDocIds: string[];
@@ -29,9 +34,11 @@ interface NotebookSourcesRailProps {
   hasNewActivity?: boolean;
   newActivityText?: string;
   onOpenUploadModal?: () => void;
+  onDocumentUploaded?: () => void;
 }
 
 export const NotebookSourcesRail: React.FC<NotebookSourcesRailProps> = ({
+  postId,
   documents,
   comments,
   selectedDocIds,
@@ -45,9 +52,39 @@ export const NotebookSourcesRail: React.FC<NotebookSourcesRailProps> = ({
   hasNewActivity,
   newActivityText,
   onOpenUploadModal,
+  onDocumentUploaded,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'docs' | 'comments'>('all');
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // File upload handler
+  const handleUploadFile = async (file: File) => {
+    if (!postId) return;
+    setIsUploading(true);
+    setUploadError(null);
+    try {
+      await api.uploadPostDocument(postId, file);
+      if (onDocumentUploaded) {
+        onDocumentUploaded();
+      }
+    } catch (err: any) {
+      setUploadError(err.message || 'Failed to upload document');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleUploadFile(e.dataTransfer.files[0]);
+    }
+  };
 
   // Filter documents
   const filteredDocs = documents.filter((doc) =>
@@ -94,7 +131,30 @@ export const NotebookSourcesRail: React.FC<NotebookSourcesRailProps> = ({
   }
 
   return (
-    <div className="w-80 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--surface-subtle)]/40 flex flex-col h-full overflow-hidden transition-all duration-200">
+    <div
+      className={`w-80 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--surface-subtle)]/40 flex flex-col h-full overflow-hidden transition-all duration-200 ${
+        isDragging ? 'ring-2 ring-indigo-500 bg-indigo-50/20' : ''
+      }`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={handleDrop}
+    >
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleUploadFile(e.target.files[0]);
+          }
+        }}
+        accept=".pdf,.md,.txt"
+        className="hidden"
+      />
+
       {/* Sources Header */}
       <div className="p-3.5 border-b border-[var(--border-subtle)] space-y-2.5 bg-[var(--surface)]">
         <div className="flex items-center justify-between">
@@ -109,16 +169,20 @@ export const NotebookSourcesRail: React.FC<NotebookSourcesRailProps> = ({
           </div>
 
           <div className="flex items-center gap-1">
-            {onOpenUploadModal && (
-              <button
-                type="button"
-                onClick={onOpenUploadModal}
-                className="p-1.5 rounded-lg hover:bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-indigo-600 transition-colors cursor-pointer"
-                title="Add New Source"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenUploadModal) {
+                  onOpenUploadModal();
+                } else {
+                  fileInputRef.current?.click();
+                }
+              }}
+              className="p-1.5 rounded-lg hover:bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-indigo-600 transition-colors cursor-pointer"
+              title="Upload New Spec/Document (.pdf, .md, .txt)"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
             <button
               type="button"
               onClick={onToggleCollapse}
@@ -135,6 +199,37 @@ export const NotebookSourcesRail: React.FC<NotebookSourcesRailProps> = ({
           <div className="flex items-center gap-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
             <Zap className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">{newActivityText}</span>
+          </div>
+        )}
+
+        {/* Drag-and-Drop Ingestion Dropzone */}
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          className={`p-2.5 rounded-xl border border-dashed transition-all text-center cursor-pointer ${
+            isDragging
+              ? 'border-indigo-600 bg-indigo-500/10'
+              : 'border-[var(--border-subtle)] hover:border-indigo-500/50 bg-[var(--surface-subtle)]'
+          }`}
+        >
+          {isUploading ? (
+            <div className="flex items-center justify-center gap-2 text-xs text-indigo-600 dark:text-indigo-400 font-medium py-1">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <span>Indexing document into BM25...</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+              <UploadCloud className="w-3.5 h-3.5 text-indigo-500" />
+              <span className="font-medium text-[11px]">
+                Drop or click to add PDF, MD, or TXT
+              </span>
+            </div>
+          )}
+        </div>
+
+        {uploadError && (
+          <div className="p-2 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[11px] flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{uploadError}</span>
           </div>
         )}
 
@@ -221,7 +316,7 @@ export const NotebookSourcesRail: React.FC<NotebookSourcesRailProps> = ({
 
             {filteredDocs.length === 0 ? (
               <p className="text-[11px] text-[var(--text-muted)] italic px-2 py-1">
-                No matching documentation.
+                No matching documentation. Drop a file above to add.
               </p>
             ) : (
               filteredDocs.map((doc) => {

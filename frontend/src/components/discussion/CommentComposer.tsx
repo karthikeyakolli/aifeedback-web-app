@@ -1,7 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { UserX, Send, CornerDownRight, AlertCircle } from 'lucide-react';
+import {
+  UserX,
+  Send,
+  CornerDownRight,
+  AlertCircle,
+  Bold,
+  Italic,
+  List,
+  Code,
+  Quote,
+  Eye,
+  Edit3,
+} from 'lucide-react';
 import { Button } from '../common/Button';
 import { useAuth } from '../../context/AuthContext';
+import { MarkdownRenderer } from '../insights/MarkdownRenderer';
 
 interface CommentComposerProps {
   postId?: string;
@@ -30,6 +43,7 @@ export const CommentComposer: React.FC<CommentComposerProps> = ({
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'write' | 'preview'>('write');
 
   // Auto-save draft on input
   useEffect(() => {
@@ -61,12 +75,38 @@ export const CommentComposer: React.FC<CommentComposerProps> = ({
       // Clean up draft upon confirmed success
       localStorage.removeItem(draftKey);
       setContent('');
+      setMode('write');
       if (onCancelReply) onCancelReply();
     } catch (err: any) {
       setSubmitError(err?.message || 'Failed to submit comment. Your draft was preserved.');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Helper for formatting shortcuts
+  const insertFormatting = (prefix: string, suffix: string = '') => {
+    const textarea = document.getElementById(`comment_textarea_${draftKey}`) as HTMLTextAreaElement;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = content.substring(start, end);
+
+    const replacement = selected
+      ? `${prefix}${selected}${suffix}`
+      : `${prefix}text${suffix}`;
+
+    const newContent = content.substring(0, start) + replacement + content.substring(end);
+    setContent(newContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(
+        start + prefix.length,
+        start + prefix.length + (selected ? selected.length : 4)
+      );
+    }, 10);
   };
 
   // Keyboard shortcut: Ctrl+Enter / Cmd+Enter
@@ -104,6 +144,82 @@ export const CommentComposer: React.FC<CommentComposerProps> = ({
         </div>
       )}
 
+      {/* Write / Preview Tab Switcher & Formatting Bar */}
+      <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--border-subtle)]/70 text-xs">
+        <div className="flex items-center gap-1 bg-[var(--bg-secondary)] p-0.5 rounded-lg border border-[var(--border-subtle)]">
+          <button
+            type="button"
+            onClick={() => setMode('write')}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+              mode === 'write'
+                ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-2xs'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Edit3 className="w-3 h-3" />
+            <span>Write</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('preview')}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+              mode === 'preview'
+                ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-2xs'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Eye className="w-3 h-3" />
+            <span>Preview</span>
+          </button>
+        </div>
+
+        {/* Formatting Actions Toolbar (Visible in Write Mode) */}
+        {mode === 'write' && (
+          <div className="flex items-center gap-1 text-[var(--text-muted)]">
+            <button
+              type="button"
+              onClick={() => insertFormatting('**', '**')}
+              className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title="Bold (**text**)"
+            >
+              <Bold className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertFormatting('*', '*')}
+              className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title="Italic (*text*)"
+            >
+              <Italic className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertFormatting('- ')}
+              className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title="Bullet list (- )"
+            >
+              <List className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertFormatting('`', '`')}
+              className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title="Inline Code (`code`)"
+            >
+              <Code className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => insertFormatting('> ')}
+              className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title="Quote (> )"
+            >
+              <Quote className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
       {submitError && (
         <div
           role="alert"
@@ -114,17 +230,30 @@ export const CommentComposer: React.FC<CommentComposerProps> = ({
         </div>
       )}
 
-      <textarea
-        rows={3}
-        value={content}
-        onChange={(e) => {
-          setContent(e.target.value);
-          if (submitError) setSubmitError(null);
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        className="w-full bg-transparent resize-y text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none leading-relaxed"
-      />
+      {mode === 'write' ? (
+        <textarea
+          id={`comment_textarea_${draftKey}`}
+          rows={3}
+          value={content}
+          onChange={(e) => {
+            setContent(e.target.value);
+            if (submitError) setSubmitError(null);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="w-full bg-transparent resize-y text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none leading-relaxed min-h-[72px]"
+        />
+      ) : (
+        <div className="min-h-[72px] p-2.5 rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border-subtle)] text-xs">
+          {content.trim() ? (
+            <MarkdownRenderer content={content} />
+          ) : (
+            <span className="text-[var(--text-muted)] italic">
+              Nothing to preview. Type feedback in the Write tab.
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2 border-t border-[var(--border-subtle)]">
         {/* Anonymous toggle & Keyboard hint */}

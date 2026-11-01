@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
@@ -6,6 +6,7 @@ import { MobileDrawer } from './MobileDrawer';
 import { MobileNav } from './MobileNav';
 import { Footer } from './Footer';
 import { AppLoadingScreen } from '../common/AppLoadingScreen';
+import { CommandPalette } from '../common/CommandPalette';
 import { useAuth } from '../../context/AuthContext';
 
 export const AppLayout: React.FC = () => {
@@ -19,6 +20,19 @@ export const AppLayout: React.FC = () => {
   });
 
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Global Command Palette Shortcut: Cmd+K / Ctrl+K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const toggleSidebarCollapse = () => {
     setIsSidebarCollapsed((prev) => {
@@ -75,7 +89,16 @@ export const AppLayout: React.FC = () => {
       {/* Main Content Column */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
         {/* Top Header (~64px) */}
-        <Header onOpenMobileMenu={() => setIsMobileDrawerOpen(true)} />
+        <Header
+          onOpenMobileMenu={() => setIsMobileDrawerOpen(true)}
+          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        />
+
+        {/* Global Keyboard Command Palette (Cmd+K / Ctrl+K) */}
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+        />
 
         {/* Mobile Slide-Over Navigation Sheet */}
         <MobileDrawer

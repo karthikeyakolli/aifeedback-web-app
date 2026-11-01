@@ -14,6 +14,8 @@ import {
   FileText,
   User,
   Quote,
+  Layers,
+  ArrowRight,
 } from 'lucide-react';
 import type { ChatMessage, Citation } from '../../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -34,6 +36,7 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
   const [showEvidenceDrawer, setShowEvidenceDrawer] = useState(false);
+  const [hoveredCitation, setHoveredCitation] = useState<Citation | null>(null);
 
   const handleCopy = () => {
     // Copy markdown text
@@ -47,7 +50,8 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
     (metadata.observed_facts && metadata.observed_facts.length > 0) ||
     (metadata.hypotheses && metadata.hypotheses.length > 0) ||
     (metadata.recommendations && metadata.recommendations.length > 0) ||
-    Boolean(metadata.limitations);
+    Boolean(metadata.limitations) ||
+    Boolean(metadata.visual_diagram);
 
   // User message rendering
   if (isUser) {
@@ -65,7 +69,7 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
 
   // Assistant message rendering (ChatGPT Answer Style)
   return (
-    <div className="my-5 group">
+    <div className="my-5 group relative">
       {/* Assistant Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -198,7 +202,20 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
                   </div>
                 )}
 
-                {/* 4. Limitations & Missing Data */}
+                {/* 4. Visual Architecture Flow */}
+                {metadata.visual_diagram && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                      <Layers className="w-3 h-3" />
+                      Architecture Flow & Diagram
+                    </span>
+                    <div className="p-3 rounded-lg bg-slate-950 text-slate-100 font-mono text-[11px] overflow-x-auto border border-slate-800">
+                      <pre>{metadata.visual_diagram}</pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Limitations & Missing Data */}
                 {metadata.limitations && (
                   <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/50 text-[11px] text-[var(--text-muted)] flex items-start gap-2">
                     <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
@@ -213,28 +230,56 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
           </div>
         )}
 
-        {/* Inline Citation Chips Tray */}
+        {/* Inline Citation Chips Tray with Interactive Hover Cards */}
         {message.citations && message.citations.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-[11px] text-[var(--text-muted)] font-medium mr-1">
-              Sources referenced:
-            </span>
-            {message.citations.map((c, idx) => (
-              <button
-                key={c.commentId || idx}
-                type="button"
-                onClick={() => onCitationClick?.(c)}
-                className="flex items-center gap-1 px-2 py-0.8 rounded-md text-[11px] font-medium bg-[var(--surface-subtle)] border border-[var(--border-subtle)] hover:border-indigo-500 text-[var(--text-primary)] hover:text-indigo-600 transition-all cursor-pointer shadow-2xs"
-                title={`Inspect quote: "${c.quoteSnippet}"`}
-              >
-                {c.sourceType === 'document' ? (
-                  <FileText className="w-3 h-3 text-blue-500" />
-                ) : (
-                  <User className="w-3 h-3 text-emerald-500" />
-                )}
-                <span>{c.authorDisplay || c.commentId.slice(0, 8)}</span>
-              </button>
-            ))}
+          <div className="relative pt-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-[var(--text-muted)] font-medium mr-1">
+                Sources referenced:
+              </span>
+              {message.citations.map((c, idx) => (
+                <div
+                  key={c.commentId || idx}
+                  className="relative inline-block"
+                  onMouseEnter={() => setHoveredCitation(c)}
+                  onMouseLeave={() => setHoveredCitation(null)}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onCitationClick?.(c)}
+                    className="flex items-center gap-1 px-2 py-0.8 rounded-md text-[11px] font-medium bg-[var(--surface-subtle)] border border-[var(--border-subtle)] hover:border-indigo-500 text-[var(--text-primary)] hover:text-indigo-600 transition-all cursor-pointer shadow-2xs"
+                  >
+                    {c.sourceType === 'document' ? (
+                      <FileText className="w-3 h-3 text-blue-500" />
+                    ) : (
+                      <User className="w-3 h-3 text-emerald-500" />
+                    )}
+                    <span>{c.authorDisplay || c.commentId.slice(0, 8)}</span>
+                  </button>
+
+                  {/* Micro-Inspector Hover Card */}
+                  {hoveredCitation?.commentId === c.commentId && (
+                    <div className="absolute left-0 bottom-full mb-2 w-72 p-3 rounded-xl bg-[var(--surface)] border border-indigo-500/30 shadow-xl z-30 text-xs animate-in fade-in zoom-in-95 duration-100 pointer-events-none">
+                      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[var(--border-subtle)]">
+                        <span className="font-bold text-[11px] text-[var(--text-primary)] truncate">
+                          {c.authorDisplay || 'Verified Source'}
+                        </span>
+                        <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                          {c.sourceType || 'comment'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)] italic line-clamp-3 leading-relaxed">
+                        "{c.quoteSnippet}"
+                      </p>
+                      <div className="flex items-center justify-between pt-1.5 mt-1.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                        <span>Click to open in Studio</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -298,4 +343,3 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
     </div>
   );
 };
-
