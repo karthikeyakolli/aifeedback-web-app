@@ -32,3 +32,21 @@ class ReportResponse(BaseModel):
     targetId: str
     status: str
     message: str
+
+
+class ReportResolveRequest(BaseModel):
+    """Payload for resolving a moderation report."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    action: Literal["hide", "dismiss", "warn", "restore"] = Field(
+        ...,
+        description="Action to take on the reported item",
+    )
+    notes: Optional[str] = Field("", max_length=1000, description="Moderator resolution notes")
+
+
+class PostLockRequest(BaseModel):
+    """Payload for locking or unlocking a post."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    locked: bool = Field(..., description="Whether to lock or unlock the discussion")

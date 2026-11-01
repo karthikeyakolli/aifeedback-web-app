@@ -31,6 +31,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       setResolvedTheme(active);
+      root.style.colorScheme = active;
+      root.setAttribute('data-theme', active);
       if (active === 'dark') {
         root.classList.add('dark');
       } else {

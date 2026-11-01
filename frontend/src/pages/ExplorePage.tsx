@@ -1,165 +1,345 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Compass, Tag } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Search,
+  Compass,
+  Layers,
+  MessageSquare,
+  X,
+  Tag,
+  ArrowUpDown,
+} from 'lucide-react';
 import type { Post } from '../types';
 import { api } from '../services/api';
+import { extractProductsFromPosts } from '../lib/products';
+import { ProductCard } from '../components/product/ProductCard';
 import { PostCard } from '../components/feed/PostCard';
-import { Card } from '../components/common/Card';
 import { EmptyState } from '../components/common/EmptyState';
+import { CategoryFilter } from '../components/feed/CategoryFilter';
 
-const CATEGORY_CARDS = [
-  { name: 'Productivity', desc: 'Task velocity, note taking, keyboard workflows', count: 18 },
-  { name: 'Developer Tools', desc: 'CLIs, databases, SDKs, developer experience', count: 24 },
-  { name: 'AI & Machine Learning', desc: 'LLM agents, fine-tuning, RAG, prompt UX', count: 31 },
-  { name: 'Design & UX', desc: 'Wireframes, design systems, design critiques', count: 12 },
-  { name: 'SaaS & B2B', desc: 'Enterprise software, pricing, compliance, sales', count: 15 },
-  { name: 'Mobile Apps', desc: 'iOS, Android, React Native, mobile ergonomics', count: 9 },
-];
+type ExploreView = 'products' | 'discussions';
 
 export const ExplorePage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<ExploreView>('products');
   const [searchQuery, setSearchQuery] = useState('');
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [filteredPosts, setFilteredPosts] = useState<Post[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'popular' | 'discussed' | 'recent'>('popular');
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    api.getPosts().then((data) => {
-      setPosts(data);
-      setFilteredPosts(data);
-    });
+    setIsLoading(true);
+    api.getPosts()
+      .then((data) => setPosts(data))
+      .catch((err) => console.error('Failed to load posts:', err))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  useEffect(() => {
+  // Extract products from posts
+  const products = useMemo(() => extractProductsFromPosts(posts), [posts]);
+
+  // Extract unique tags
+  const allTags = useMemo(() => Array.from(new Set(posts.flatMap((p) => p.tags || []))), [posts]);
+
+  // Filtered products
+  const filteredProducts = useMemo(() => {
+    let res = [...products];
+
+    if (selectedCategory !== 'All') {
+      res = res.filter((p) => p.category === selectedCategory);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      res = res.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.tagline.toLowerCase().includes(q) ||
+          p.description.toLowerCase().includes(q) ||
+          (p.tags && p.tags.some((t: string) => t.toLowerCase().includes(q)))
+      );
+    }
+
+    if (selectedTag) {
+      res = res.filter((p) => p.tags && p.tags.includes(selectedTag));
+    }
+
+    // Sort
+    if (sortBy === 'popular') {
+      res.sort((a, b) => b.upvotesCount - a.upvotesCount);
+    } else if (sortBy === 'discussed') {
+      res.sort((a, b) => b.totalReviews - a.totalReviews);
+    } else if (sortBy === 'recent') {
+      res.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+
+    return res;
+  }, [products, selectedCategory, searchQuery, selectedTag, sortBy]);
+
+  // Filtered discussions
+  const filteredDiscussions = useMemo(() => {
     let res = [...posts];
+
+    if (selectedCategory !== 'All') {
+      res = res.filter((p) => p.category === selectedCategory);
+    }
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       res = res.filter(
         (p) =>
           p.title.toLowerCase().includes(q) ||
           p.description.toLowerCase().includes(q) ||
-          p.tags.some((t) => t.toLowerCase().includes(q))
+          (p.tags && p.tags.some((t: string) => t.toLowerCase().includes(q)))
       );
     }
-    if (selectedTag) {
-      res = res.filter((p) => p.tags.includes(selectedTag));
-    }
-    setFilteredPosts(res);
-  }, [searchQuery, selectedTag, posts]);
 
-  // Extract all unique tags
-  const allTags = Array.from(new Set(posts.flatMap((p) => p.tags)));
+    if (selectedTag) {
+      res = res.filter((p) => p.tags && p.tags.includes(selectedTag));
+    }
+
+    if (sortBy === 'popular') {
+      res.sort((a, b) => b.upvotesCount - a.upvotesCount);
+    } else if (sortBy === 'discussed') {
+      res.sort((a, b) => b.commentsCount - a.commentsCount);
+    } else if (sortBy === 'recent') {
+      res.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+
+    return res;
+  }, [posts, selectedCategory, searchQuery, selectedTag, sortBy]);
 
   return (
-    <div className="space-y-8">
-      {/* Search Header */}
+    <div className="space-y-6 max-w-6xl mx-auto pb-12">
+      {/* Page Header */}
       <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-2">
-          Explore Product Discussions
+        <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 uppercase tracking-wider">
+          <Compass className="w-4 h-4" />
+          <span>Product Discovery & Reviews</span>
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--text-primary)]">
+          Explore Products & Discussions
         </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-          Search across products, feature requests, and community review discussions.
+        <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
+          Discover working developer tools, SaaS applications, and MVPs seeking candid community critique.
         </p>
+      </div>
 
-        <div className="relative max-w-2xl">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      {/* Discovery Mode Switcher & Search Bar */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* View Segmented Switcher (Tactile Neomorphic) */}
+          <div
+            role="tablist"
+            aria-label="Discovery View"
+            className="inline-flex p-1 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] neomorph-inset self-start"
+          >
+            <button
+              role="tab"
+              aria-selected={activeTab === 'products'}
+              onClick={() => setActiveTab('products')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'products'
+                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Products ({products.length})</span>
+            </button>
+
+            <button
+              role="tab"
+              aria-selected={activeTab === 'discussions'}
+              onClick={() => setActiveTab('discussions')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'discussions'
+                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+              <span>Discussions ({posts.length})</span>
+            </button>
+          </div>
+
+          {/* Sort Selector */}
+          <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] self-end sm:self-auto">
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            <span className="font-medium hidden sm:inline">Sort:</span>
+            <div className="inline-flex rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-0.5 text-xs">
+              <button
+                onClick={() => setSortBy('popular')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                  sortBy === 'popular'
+                    ? 'bg-indigo-600 text-white font-semibold'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                Popular
+              </button>
+              <button
+                onClick={() => setSortBy('discussed')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                  sortBy === 'discussed'
+                    ? 'bg-indigo-600 text-white font-semibold'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                Most Reviews
+              </button>
+              <button
+                onClick={() => setSortBy('recent')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                  sortBy === 'recent'
+                    ? 'bg-indigo-600 text-white font-semibold'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                Recent
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Search Input Bar */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by keywords, problems, or technologies (e.g. SQLite, onboarding, pricing)..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111625] text-slate-900 dark:text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all shadow-xs"
+            placeholder={
+              activeTab === 'products'
+                ? 'Search products by name, problem space, or technology stack...'
+                : 'Search discussions by title, author, or keyword...'
+            }
+            aria-label="Search discovery catalog"
+            className="w-full pl-10 pr-9 py-2.5 rounded-xl text-sm border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 shadow-xs transition-all"
           />
-        </div>
-      </div>
-
-      {/* Category Grid */}
-      {!searchQuery && !selectedTag && (
-        <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-1.5">
-            <Compass className="w-4 h-4 text-blue-500" />
-            Browse Categories
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {CATEGORY_CARDS.map((cat) => (
-              <Card
-                key={cat.name}
-                hoverable
-                onClick={() => setSearchQuery(cat.name)}
-                className="p-4 cursor-pointer"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <h3 className="font-semibold text-sm text-slate-900 dark:text-slate-100">
-                    {cat.name}
-                  </h3>
-                  <span className="text-[11px] font-mono text-slate-400">
-                    {cat.count} posts
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  {cat.desc}
-                </p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tags Cloud */}
-      <div>
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-1.5">
-          <Tag className="w-4 h-4 text-blue-500" />
-          Popular Topic Tags
-        </h2>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {selectedTag && (
+          {searchQuery && (
             <button
-              onClick={() => setSelectedTag(null)}
-              className="text-xs px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 font-medium cursor-pointer"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search query"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             >
-              Clear tag: {selectedTag} ✕
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
-          {allTags.map((tag) => (
-            <button
-              key={tag}
-              onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
-              className={`text-xs px-2.5 py-1 rounded-md border transition-colors cursor-pointer ${
-                selectedTag === tag
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300'
-              }`}
-            >
-              #{tag}
-            </button>
-          ))}
         </div>
+
+        {/* Category Pills Filter */}
+        <CategoryFilter
+          selectedCategory={selectedCategory}
+          onSelectCategory={(cat) => setSelectedCategory(cat)}
+        />
+
+        {/* Popular Topic Tags */}
+        {allTags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1 mr-1">
+              <Tag className="w-3 h-3 text-indigo-500" /> Tags:
+            </span>
+            {selectedTag && (
+              <button
+                onClick={() => setSelectedTag(null)}
+                className="text-[11px] px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900 font-medium cursor-pointer"
+              >
+                Clear #{selectedTag} ✕
+              </button>
+            )}
+            {allTags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
+                className={`text-[11px] px-2.5 py-0.5 rounded-md border transition-colors cursor-pointer ${
+                  selectedTag === tag
+                    ? 'bg-indigo-600 text-white border-indigo-600 font-semibold'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-[var(--text-primary)] hover:border-slate-300 dark:hover:border-slate-700'
+                }`}
+              >
+                #{tag}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Active Filters Summary */}
+        {(searchQuery || selectedCategory !== 'All' || selectedTag) && (
+          <div className="flex items-center justify-between text-xs text-[var(--text-muted)] px-1 pt-1">
+            <span>
+              Showing{' '}
+              {activeTab === 'products' ? filteredProducts.length : filteredDiscussions.length}{' '}
+              {activeTab === 'products' ? 'products' : 'discussions'}
+              {selectedCategory !== 'All' && ` in ${selectedCategory}`}
+              {searchQuery && ` matching "${searchQuery}"`}
+              {selectedTag && ` tagged #${selectedTag}`}
+            </span>
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedCategory('All');
+                setSelectedTag(null);
+              }}
+              className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
+            >
+              Reset all filters
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Results Feed */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Results ({filteredPosts.length})
-          </h2>
+      {/* Main Content Catalog */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div
+              key={i}
+              className="h-48 rounded-2xl bg-[var(--border-subtle)] animate-pulse"
+            />
+          ))}
         </div>
-
-        {filteredPosts.length > 0 ? (
-          <div className="space-y-3">
-            {filteredPosts.map((post) => (
-              <PostCard key={post.id} post={post} />
+      ) : activeTab === 'products' ? (
+        filteredProducts.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            {filteredProducts.map((product) => (
+              <ProductCard key={product.id} product={product} />
             ))}
           </div>
         ) : (
           <EmptyState
-            title="No matching discussions found"
-            description="Try searching with different keywords or clearing tag filters."
+            title={
+              searchQuery
+                ? `No products found matching "${searchQuery}"`
+                : `No products in category "${selectedCategory}"`
+            }
+            description="Try modifying your keyword query or browse across all product categories."
             actionText="Reset Search"
             onAction={() => {
               setSearchQuery('');
+              setSelectedCategory('All');
               setSelectedTag(null);
             }}
           />
-        )}
-      </div>
+        )
+      ) : filteredDiscussions.length > 0 ? (
+        <div className="space-y-3">
+          {filteredDiscussions.map((post) => (
+            <PostCard key={post.id} post={post} />
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          title="No discussions found"
+          description="Try broadening your search or starting a new review discussion."
+          actionText="Reset Search"
+          onAction={() => {
+            setSearchQuery('');
+            setSelectedCategory('All');
+            setSelectedTag(null);
+          }}
+        />
+      )}
     </div>
   );
 };

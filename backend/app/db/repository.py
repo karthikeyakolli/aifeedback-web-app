@@ -130,6 +130,59 @@ class CommunityRepository:
                 "joinedAt": row["created_at"],
             }
 
+    def ensure_profile_exists(
+        self,
+        user_id: str,
+        email: str = "",
+        username: Optional[str] = None,
+        display_name: Optional[str] = None,
+        avatar_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Ensures an authenticated Supabase user has a local profile record in the repository."""
+        with self.db.session() as conn:
+            existing = conn.execute("SELECT id FROM profiles WHERE id = ?", (user_id,)).fetchone()
+            if existing:
+                return self.get_profile(user_id)
+
+            now = utc_now_iso()
+            # Generate safe fallback username if not provided or collision exists
+            base_username = (username or (email.split("@")[0] if email else f"user_{user_id[:8]}")).strip()
+            resolved_username = base_username
+            collision = conn.execute(
+                "SELECT id FROM profiles WHERE lower(username) = lower(?)", (resolved_username,)
+            ).fetchone()
+            if collision:
+                resolved_username = f"{base_username}_{uuid.uuid4().hex[:4]}"
+
+            resolved_display_name = (display_name or resolved_username).strip()
+
+            if email:
+                conn.execute(
+                    """INSERT OR IGNORE INTO auth_users (id, email, hashed_password, created_at)
+                    VALUES (?, ?, ?, ?)""",
+                    (user_id, email.lower().strip(), "SUPABASE_MANAGED_AUTH", now),
+                )
+
+            conn.execute(
+                """INSERT INTO profiles (
+                    id, username, display_name, avatar_url, bio, reputation_score, is_moderator, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    user_id,
+                    resolved_username,
+                    resolved_display_name,
+                    avatar_url,
+                    "",
+                    10,
+                    0,
+                    now,
+                    now,
+                ),
+            )
+
+        return self.get_profile(user_id)
+
+
     def get_public_profile(self, user_id: str) -> Dict[str, Any]:
         """Retrieves public profile for any user, omitting private info (email) and all anonymous posts."""
         with self.db.session() as conn:
@@ -373,15 +426,20 @@ class CommunityRepository:
         is_anon = 1 if is_anonymous else 0
 
         with self.db.session() as conn:
-            # Verify post exists
-            post = conn.execute("SELECT id FROM posts WHERE id = ?", (post_id,)).fetchone()
+            # Verify post exists & check lock status
+            post = conn.execute("SELECT id, title, author_id, status FROM posts WHERE id = ?", (post_id,)).fetchone()
             if not post:
                 raise HTTPException(status_code=404, detail="Post not found.")
+            if post["status"] == "locked":
+                prof = conn.execute("SELECT is_moderator FROM profiles WHERE id = ?", (author_id,)).fetchone()
+                if not (prof and prof["is_moderator"]):
+                    raise HTTPException(status_code=403, detail="This discussion has been locked by a moderator.")
 
             # If parent comment is supplied, verify it belongs to the same post
+            parent_author_id = None
             if parent_comment_id:
                 parent = conn.execute(
-                    "SELECT post_id FROM comments WHERE id = ?", (parent_comment_id,)
+                    "SELECT post_id, author_id FROM comments WHERE id = ?", (parent_comment_id,)
                 ).fetchone()
                 if not parent:
                     raise HTTPException(status_code=404, detail="Parent comment not found.")
@@ -389,6 +447,7 @@ class CommunityRepository:
                     raise HTTPException(
                         status_code=400, detail="Parent comment does not belong to this post."
                     )
+                parent_author_id = parent["author_id"]
 
             conn.execute(
                 """INSERT INTO comments (
@@ -416,6 +475,42 @@ class CommunityRepository:
                 "UPDATE posts SET comments_count = comments_count + 1 WHERE id = ?",
                 (post_id,),
             )
+
+            # Social Translucence & Awareness: Trigger notification for parent author or post author
+            commenter_name = "Someone" if is_anonymous else "A member"
+            if not is_anonymous:
+                c_prof = conn.execute("SELECT display_name, username FROM profiles WHERE id = ?", (author_id,)).fetchone()
+                if c_prof:
+                    commenter_name = c_prof["display_name"] or c_prof["username"]
+
+            if parent_author_id and parent_author_id != author_id:
+                notif_id = f"notif_{uuid.uuid4().hex[:12]}"
+                conn.execute(
+                    """INSERT INTO notifications (id, user_id, actor_id, type, title, message, link_url, is_read, created_at)
+                    VALUES (?, ?, ?, 'reply', 'New reply to your comment', ?, ?, 0, ?)""",
+                    (
+                        notif_id,
+                        parent_author_id,
+                        None if is_anonymous else author_id,
+                        f'{commenter_name} replied: "{content.strip()[:60]}..."',
+                        f"/posts/{post_id}",
+                        now,
+                    ),
+                )
+            elif not parent_author_id and post["author_id"] != author_id:
+                notif_id = f"notif_{uuid.uuid4().hex[:12]}"
+                conn.execute(
+                    """INSERT INTO notifications (id, user_id, actor_id, type, title, message, link_url, is_read, created_at)
+                    VALUES (?, ?, ?, 'comment', 'New comment on your discussion', ?, ?, 0, ?)""",
+                    (
+                        notif_id,
+                        post["author_id"],
+                        None if is_anonymous else author_id,
+                        f'{commenter_name} commented on "{post["title"][:40]}": "{content.strip()[:60]}..."',
+                        f"/posts/{post_id}",
+                        now,
+                    ),
+                )
 
         return self.get_comment(comment_id, current_user_id=author_id)
 
@@ -720,6 +815,103 @@ class CommunityRepository:
                 "message": "Report submitted successfully for moderation review.",
             }
 
+    def list_reports(self) -> List[Dict[str, Any]]:
+        """Lists submitted moderation reports for authorized moderators with target previews."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                """SELECT r.*, pr.username as reporter_username, pr.display_name as reporter_display_name
+                FROM reports r
+                JOIN profiles pr ON r.reporter_id = pr.id
+                ORDER BY r.created_at DESC"""
+            ).fetchall()
+            results = []
+            for r in rows:
+                target_preview = ""
+                target_author = ""
+                target_status = "published"
+                if r["target_type"] == "post":
+                    p = conn.execute("SELECT title, description, status, author_id FROM posts WHERE id = ?", (r["target_id"],)).fetchone()
+                    if p:
+                        target_preview = f"{p['title']}: {p['description'][:100]}"
+                        target_status = p["status"] or "published"
+                elif r["target_type"] == "comment":
+                    c = conn.execute("SELECT content, status, author_id FROM comments WHERE id = ?", (r["target_id"],)).fetchone()
+                    if c:
+                        target_preview = c["content"][:120]
+                        target_status = c["status"] or "published"
+
+                results.append({
+                    "id": r["id"],
+                    "reporterId": r["reporter_id"],
+                    "reporterUsername": r["reporter_username"],
+                    "reporterDisplayName": r["reporter_display_name"],
+                    "targetType": r["target_type"],
+                    "targetId": r["target_id"],
+                    "targetPreview": target_preview,
+                    "targetStatus": target_status,
+                    "reason": r["reason"],
+                    "description": r["description"],
+                    "status": r["status"],
+                    "createdAt": r["created_at"],
+                })
+            return results
+
+    def resolve_report(
+        self,
+        report_id: str,
+        action: str,
+        notes: str = "",
+        moderator_id: str = "",
+    ) -> Dict[str, Any]:
+        """Resolves a moderation report and takes action (hide, dismiss, warn)."""
+        valid_actions = ("hide", "dismiss", "warn")
+        if action not in valid_actions:
+            raise HTTPException(status_code=400, detail=f"Invalid action. Must be one of {valid_actions}")
+
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            rep = conn.execute("SELECT * FROM reports WHERE id = ?", (report_id,)).fetchone()
+            if not rep:
+                raise HTTPException(status_code=404, detail="Report not found.")
+
+            target_type = rep["target_type"]
+            target_id = rep["target_id"]
+
+            if action == "hide":
+                if target_type == "post":
+                    conn.execute("UPDATE posts SET status = 'hidden', updated_at = ? WHERE id = ?", (now, target_id))
+                elif target_type == "comment":
+                    conn.execute("UPDATE comments SET status = 'hidden', updated_at = ? WHERE id = ?", (now, target_id))
+            elif action == "restore":
+                if target_type == "post":
+                    conn.execute("UPDATE posts SET status = 'published', updated_at = ? WHERE id = ?", (now, target_id))
+                elif target_type == "comment":
+                    conn.execute("UPDATE comments SET status = 'published', updated_at = ? WHERE id = ?", (now, target_id))
+
+            conn.execute(
+                "UPDATE reports SET status = ? WHERE id = ?",
+                ("resolved" if action != "dismiss" else "dismissed", report_id),
+            )
+            return {
+                "id": report_id,
+                "status": "resolved" if action != "dismiss" else "dismissed",
+                "action": action,
+                "notes": notes,
+                "resolvedAt": now,
+            }
+
+    def toggle_post_lock(self, post_id: str, locked: bool, moderator_id: str = "") -> Dict[str, Any]:
+        """Locks or unlocks a discussion post to prevent or allow further comments."""
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            post = conn.execute("SELECT id, status FROM posts WHERE id = ?", (post_id,)).fetchone()
+            if not post:
+                raise HTTPException(status_code=404, detail="Post not found.")
+            new_status = "locked" if locked else "published"
+            conn.execute("UPDATE posts SET status = ?, updated_at = ? WHERE id = ?", (new_status, now, post_id))
+            return {"postId": post_id, "status": new_status, "isLocked": locked}
+
+
     # -------------------------------------------------------------------------
     # Anonymity Protection & Serialization Helpers
     # -------------------------------------------------------------------------
@@ -765,13 +957,525 @@ class CommunityRepository:
             "isAnonymous": is_anon,
             "upvotesCount": row["upvotes_count"],
             "commentsCount": row["comments_count"],
-            "hasAiAnalysis": False,  # Phase 3 will activate real analysis
+            "hasAiAnalysis": self.has_ai_analysis(row["id"]),
             "status": row["status"],
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
             "userHasUpvoted": user_has_upvoted,
             "userHasBookmarked": user_has_bookmarked,
         }
+
+    def has_ai_analysis(self, post_id: str) -> bool:
+        """Checks if a post has at least one completed AI analysis run."""
+        try:
+            with self.db.session() as conn:
+                ar = conn.execute(
+                    "SELECT 1 FROM analysis_runs WHERE post_id = ? AND status = 'completed' LIMIT 1",
+                    (post_id,),
+                ).fetchone()
+                return bool(ar)
+        except Exception:
+            return False
+
+    def save_analysis_run(
+        self,
+        post_id: str,
+        requested_by: Optional[str],
+        status: str,
+        provider: str,
+        model: str,
+        prompt_version: str,
+        input_hash: str,
+        total_comment_count: int,
+        analyzed_comment_count: int,
+        result_data: Dict[str, Any],
+        error_message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Persists a versioned AI research analysis run."""
+        run_id = f"ar_{uuid.uuid4().hex[:12]}"
+        now = utc_now_iso()
+        result_json = json.dumps(result_data)
+
+        with self.db.session() as conn:
+            conn.execute(
+                """INSERT INTO analysis_runs (
+                    id, post_id, requested_by, status, provider, model, prompt_version,
+                    input_hash, total_comment_count, analyzed_comment_count, result_json,
+                    error_message, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run_id,
+                    post_id,
+                    requested_by,
+                    status,
+                    provider,
+                    model,
+                    prompt_version,
+                    input_hash,
+                    total_comment_count,
+                    analyzed_comment_count,
+                    result_json,
+                    error_message,
+                    now,
+                    now if status == "completed" else None,
+                ),
+            )
+
+        return self.get_analysis_run(run_id)
+
+    def get_analysis_run(self, run_id: str) -> Dict[str, Any]:
+        """Retrieves an analysis run by ID."""
+        with self.db.session() as conn:
+            row = conn.execute("SELECT * FROM analysis_runs WHERE id = ?", (run_id,)).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Analysis run not found.")
+            result_data = json.loads(row["result_json"])
+            result_data["id"] = row["id"]
+            result_data["postId"] = row["post_id"]
+            result_data["modelVersion"] = row["model"]
+            result_data["createdAt"] = row["created_at"]
+            result_data["inputHash"] = row["input_hash"]
+            return result_data
+
+    def get_latest_analysis_run(self, post_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves the latest completed AI analysis run for a post."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                """SELECT * FROM analysis_runs
+                WHERE post_id = ? AND status = 'completed'
+                ORDER BY created_at DESC LIMIT 1""",
+                (post_id,),
+            ).fetchone()
+            if not row:
+                return None
+
+            result_data = json.loads(row["result_json"])
+            result_data["id"] = row["id"]
+            result_data["postId"] = row["post_id"]
+            result_data["modelVersion"] = row["model"]
+            result_data["createdAt"] = row["created_at"]
+            result_data["inputHash"] = row["input_hash"]
+            result_data["isCached"] = True
+            return result_data
+
+    def get_analysis_cooldown_remaining(self, post_id: str, cooldown_seconds: int = 30) -> int:
+        """Returns remaining cooldown seconds if post was recently analyzed, else 0."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                """SELECT created_at FROM analysis_runs
+                WHERE post_id = ? AND status = 'completed'
+                ORDER BY created_at DESC LIMIT 1""",
+                (post_id,),
+            ).fetchone()
+            if not row:
+                return 0
+
+            try:
+                # Replace Z with +00:00 if needed for fromisoformat in Python 3.10
+                ts_str = row["created_at"].replace("Z", "+00:00")
+                created_dt = datetime.fromisoformat(ts_str)
+                elapsed = (datetime.now(timezone.utc) - created_dt).total_seconds()
+                remaining = int(cooldown_seconds - elapsed)
+                return max(0, remaining)
+            except Exception:
+                return 0
+
+    # -------------------------------------------------------------------------
+    # Phase 4: Interactive Research Assistant Conversations
+    # -------------------------------------------------------------------------
+    def create_chat_session(
+        self, post_id: str, user_id: str, title: str = "Research Discussion", review_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Creates a new user-isolated research chat session for a published post, optionally linked to a review."""
+        session_id = f"cs_{uuid.uuid4().hex[:12]}"
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            # Verify post exists
+            post = conn.execute("SELECT id FROM posts WHERE id = ?", (post_id,)).fetchone()
+            if not post:
+                raise HTTPException(status_code=404, detail="Post not found.")
+
+            conn.execute(
+                """INSERT INTO conversation_sessions (
+                    id, post_id, user_id, title, review_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (session_id, post_id, user_id, title.strip()[:120], review_id, now, now),
+            )
+
+        return {
+            "id": session_id,
+            "postId": post_id,
+            "userId": user_id,
+            "title": title.strip()[:120],
+            "reviewId": review_id,
+            "createdAt": now,
+            "updatedAt": now,
+            "messageCount": 0,
+        }
+
+    def list_chat_sessions(self, post_id: str, user_id: str) -> List[Dict[str, Any]]:
+        """Returns research chat sessions belonging strictly to the requesting user for a post."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                """SELECT s.*, 
+                   (SELECT COUNT(*) FROM conversation_messages m WHERE m.session_id = s.id) as msg_count
+                   FROM conversation_sessions s
+                   WHERE s.post_id = ? AND s.user_id = ?
+                   ORDER BY s.updated_at DESC""",
+                (post_id, user_id),
+            ).fetchall()
+
+            sessions = []
+            for r in rows:
+                sessions.append({
+                    "id": r["id"],
+                    "postId": r["post_id"],
+                    "userId": r["user_id"],
+                    "title": r["title"],
+                    "reviewId": r["review_id"] if "review_id" in r.keys() else None,
+                    "createdAt": r["created_at"],
+                    "updatedAt": r["updated_at"],
+                    "messageCount": r["msg_count"],
+                })
+            return sessions
+
+    def get_chat_session(self, session_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Retrieves a conversation session, strictly verifying ownership if user_id is provided."""
+        with self.db.session() as conn:
+            if user_id:
+                row = conn.execute(
+                    "SELECT * FROM conversation_sessions WHERE id = ? AND user_id = ?",
+                    (session_id, user_id),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM conversation_sessions WHERE id = ?",
+                    (session_id,),
+                ).fetchone()
+
+            if not row:
+                return None
+
+            return {
+                "id": row["id"],
+                "postId": row["post_id"],
+                "userId": row["user_id"],
+                "title": row["title"],
+                "reviewId": row["review_id"] if "review_id" in row.keys() else None,
+                "createdAt": row["created_at"],
+                "updatedAt": row["updated_at"],
+            }
+
+    def get_or_create_conversation_session_for_review(
+        self, review_id: str, post_id: str, user_id: str, review_version: int = 1
+    ) -> Dict[str, Any]:
+        """Finds or initializes the dedicated conversation session linked to an immutable review version."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                """SELECT s.*, 
+                   (SELECT COUNT(*) FROM conversation_messages m WHERE m.session_id = s.id) as msg_count
+                   FROM conversation_sessions s
+                   WHERE s.review_id = ? AND s.user_id = ?""",
+                (review_id, user_id),
+            ).fetchone()
+            if row:
+                return {
+                    "id": row["id"],
+                    "postId": row["post_id"],
+                    "userId": row["user_id"],
+                    "title": row["title"],
+                    "reviewId": row["review_id"],
+                    "createdAt": row["created_at"],
+                    "updatedAt": row["updated_at"],
+                    "messageCount": row["msg_count"],
+                }
+
+        # If not found, create one linked to this review version
+        title = f"Review V{review_version} Linked Conversation"
+        return self.create_chat_session(post_id=post_id, user_id=user_id, title=title, review_id=review_id)
+
+    def update_chat_session(self, session_id: str, title: Optional[str] = None) -> None:
+        """Updates updated_at and optionally title for an active session."""
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            if title:
+                conn.execute(
+                    "UPDATE conversation_sessions SET title = ?, updated_at = ? WHERE id = ?",
+                    (title.strip()[:120], now, session_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE conversation_sessions SET updated_at = ? WHERE id = ?",
+                    (now, session_id),
+                )
+
+    def delete_chat_session(self, session_id: str, user_id: str) -> bool:
+        """Deletes a conversation session, strictly verifying owner authorization."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                "SELECT id FROM conversation_sessions WHERE id = ? AND user_id = ?",
+                (session_id, user_id),
+            ).fetchone()
+            if not row:
+                return False
+
+            conn.execute("DELETE FROM conversation_messages WHERE session_id = ?", (session_id,))
+            conn.execute("DELETE FROM conversation_sessions WHERE id = ?", (session_id,))
+            return True
+
+    def save_chat_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        citations: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Persists a verified conversation message turn with grounded citations."""
+        msg_id = f"cmsg_{uuid.uuid4().hex[:12]}"
+        now = utc_now_iso()
+        citations_json = json.dumps(citations or [])
+        metadata_json = json.dumps(metadata or {})
+
+        with self.db.session() as conn:
+            conn.execute(
+                """INSERT INTO conversation_messages (
+                    id, session_id, role, content, citations, metadata, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (msg_id, session_id, role, content.strip(), citations_json, metadata_json, now),
+            )
+            # Update session's updated_at
+            conn.execute(
+                "UPDATE conversation_sessions SET updated_at = ? WHERE id = ?",
+                (now, session_id),
+            )
+
+        return {
+            "id": msg_id,
+            "sessionId": session_id,
+            "role": role,
+            "content": content.strip(),
+            "citations": citations or [],
+            "metadata": metadata or {},
+            "createdAt": now,
+        }
+
+    def list_chat_messages(self, session_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Returns ordered messages belonging to a conversation session."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                """SELECT * FROM conversation_messages
+                WHERE session_id = ?
+                ORDER BY created_at ASC LIMIT ?""",
+                (session_id, limit),
+            ).fetchall()
+
+            messages = []
+            for r in rows:
+                citations = []
+                try:
+                    citations = json.loads(r["citations"]) if r["citations"] else []
+                except Exception:
+                    pass
+
+                metadata = {}
+                try:
+                    metadata = json.loads(r["metadata"]) if r["metadata"] else {}
+                except Exception:
+                    pass
+
+                messages.append({
+                    "id": r["id"],
+                    "sessionId": r["session_id"],
+                    "role": r["role"],
+                    "content": r["content"],
+                    "citations": citations,
+                    "metadata": metadata,
+                    "createdAt": r["created_at"],
+                })
+            return messages
+
+    # -------------------------------------------------------------------------
+    # Phase 5: Research Reports & PRD Documents Persistence
+    # -------------------------------------------------------------------------
+    def save_research_report(
+        self,
+        post_id: str,
+        owner_id: str,
+        report_type: str,
+        title: str,
+        content_markdown: str,
+        status: str = "completed",
+        source_analysis_id: Optional[str] = None,
+        version: int = 1,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Persists a generated research report or PRD draft."""
+        report_id = f"rep_{uuid.uuid4().hex[:12]}"
+        now = utc_now_iso()
+        metadata_json = json.dumps(metadata or {})
+
+        with self.db.session() as conn:
+            post = conn.execute("SELECT id FROM posts WHERE id = ?", (post_id,)).fetchone()
+            if not post:
+                raise HTTPException(status_code=404, detail="Post not found.")
+
+            conn.execute(
+                """INSERT INTO research_reports (
+                    id, post_id, owner_id, report_type, title, content_markdown,
+                    status, source_analysis_id, version, metadata, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    report_id,
+                    post_id,
+                    owner_id,
+                    report_type,
+                    title.strip()[:200],
+                    content_markdown.strip(),
+                    status,
+                    source_analysis_id,
+                    version,
+                    metadata_json,
+                    now,
+                    now,
+                ),
+            )
+
+        return {
+            "id": report_id,
+            "postId": post_id,
+            "ownerId": owner_id,
+            "reportType": report_type,
+            "title": title.strip()[:200],
+            "contentMarkdown": content_markdown.strip(),
+            "status": status,
+            "sourceAnalysisId": source_analysis_id,
+            "version": version,
+            "metadata": metadata or {},
+            "createdAt": now,
+            "updatedAt": now,
+        }
+
+    def get_research_report(
+        self, report_id: str, owner_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieves a research report, enforcing owner isolation if owner_id is provided."""
+        with self.db.session() as conn:
+            if owner_id:
+                row = conn.execute(
+                    "SELECT * FROM research_reports WHERE id = ? AND owner_id = ?",
+                    (report_id, owner_id),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM research_reports WHERE id = ?",
+                    (report_id,),
+                ).fetchone()
+
+            if not row:
+                return None
+
+            meta = {}
+            try:
+                meta = json.loads(row["metadata"]) if row["metadata"] else {}
+            except Exception:
+                pass
+
+            return {
+                "id": row["id"],
+                "postId": row["post_id"],
+                "ownerId": row["owner_id"],
+                "reportType": row["report_type"],
+                "title": row["title"],
+                "contentMarkdown": row["content_markdown"],
+                "status": row["status"],
+                "sourceAnalysisId": row["source_analysis_id"],
+                "version": row["version"],
+                "metadata": meta,
+                "createdAt": row["created_at"],
+                "updatedAt": row["updated_at"],
+            }
+
+    def list_research_reports(
+        self, post_id: str, owner_id: str
+    ) -> List[Dict[str, Any]]:
+        """Lists reports owned by the requesting user for a post."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                """SELECT * FROM research_reports
+                WHERE post_id = ? AND owner_id = ?
+                ORDER BY created_at DESC""",
+                (post_id, owner_id),
+            ).fetchall()
+
+            reports = []
+            for r in rows:
+                meta = {}
+                try:
+                    meta = json.loads(r["metadata"]) if r["metadata"] else {}
+                except Exception:
+                    pass
+                reports.append({
+                    "id": r["id"],
+                    "postId": r["post_id"],
+                    "ownerId": r["owner_id"],
+                    "reportType": r["report_type"],
+                    "title": r["title"],
+                    "contentMarkdown": r["content_markdown"],
+                    "status": r["status"],
+                    "sourceAnalysisId": r["source_analysis_id"],
+                    "version": r["version"],
+                    "metadata": meta,
+                    "createdAt": r["created_at"],
+                    "updatedAt": r["updated_at"],
+                })
+            return reports
+
+    def update_research_report(
+        self,
+        report_id: str,
+        owner_id: str,
+        title: Optional[str] = None,
+        content_markdown: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Updates report title or content, incrementing version and verifying owner."""
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            existing = conn.execute(
+                "SELECT * FROM research_reports WHERE id = ? AND owner_id = ?",
+                (report_id, owner_id),
+            ).fetchone()
+            if not existing:
+                return None
+
+            new_title = title.strip()[:200] if title else existing["title"]
+            new_content = content_markdown.strip() if content_markdown else existing["content_markdown"]
+            new_version = existing["version"] + 1
+
+            conn.execute(
+                """UPDATE research_reports
+                SET title = ?, content_markdown = ?, version = ?, updated_at = ?
+                WHERE id = ? AND owner_id = ?""",
+                (new_title, new_content, new_version, now, report_id, owner_id),
+            )
+
+        return self.get_research_report(report_id, owner_id)
+
+    def delete_research_report(self, report_id: str, owner_id: str) -> bool:
+        """Deletes a research report, strictly verifying ownership."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                "SELECT id FROM research_reports WHERE id = ? AND owner_id = ?",
+                (report_id, owner_id),
+            ).fetchone()
+            if not row:
+                return False
+
+            conn.execute("DELETE FROM research_reports WHERE id = ?", (report_id,))
+            return True
+
+
+
 
     def _serialize_comment(
         self, row: sqlite3.Row, user_has_upvoted: bool = False
@@ -982,6 +1686,424 @@ class CommunityRepository:
                     now,
                 ),
             )
+
+    # -------------------------------------------------------------------------
+    # Phase 6: Notifications & Social Activity
+    # -------------------------------------------------------------------------
+    def create_notification(
+        self,
+        user_id: str,
+        type: str,
+        title: str,
+        message: str,
+        link_url: str,
+        actor_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Creates and stores an actionable user notification."""
+        notif_id = f"notif_{uuid.uuid4().hex[:12]}"
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            conn.execute(
+                """INSERT INTO notifications (
+                    id, user_id, actor_id, type, title, message, link_url, is_read, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)""",
+                (notif_id, user_id, actor_id, type, title, message, link_url, now),
+            )
+            return {
+                "id": notif_id,
+                "userId": user_id,
+                "actorId": actor_id,
+                "type": type,
+                "title": title,
+                "message": message,
+                "linkUrl": link_url,
+                "isRead": False,
+                "createdAt": now,
+            }
+
+    def list_notifications(
+        self,
+        user_id: str,
+        unread_only: bool = False,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Retrieves notifications for the user with actor profile metadata."""
+        with self.db.session() as conn:
+            query = """
+                SELECT n.*, p.username as actor_username, p.display_name as actor_display_name, p.avatar_url as actor_avatar
+                FROM notifications n
+                LEFT JOIN profiles p ON n.actor_id = p.id
+                WHERE n.user_id = ?
+            """
+            params: List[Any] = [user_id]
+            if unread_only:
+                query += " AND n.is_read = 0"
+            query += " ORDER BY n.created_at DESC LIMIT ?"
+            params.append(limit)
+
+            rows = conn.execute(query, tuple(params)).fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "userId": r["user_id"],
+                    "actorId": r["actor_id"],
+                    "actorUsername": r["actor_username"],
+                    "actorDisplayName": r["actor_display_name"],
+                    "actorAvatar": r["actor_avatar"],
+                    "type": r["type"],
+                    "title": r["title"],
+                    "message": r["message"],
+                    "linkUrl": r["link_url"],
+                    "isRead": bool(r["is_read"]),
+                    "createdAt": r["created_at"],
+                }
+                for r in rows
+            ]
+
+    def mark_notification_read(self, notification_id: str, user_id: str) -> bool:
+        """Marks a single notification as read by the owner."""
+        with self.db.session() as conn:
+            res = conn.execute(
+                "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
+                (notification_id, user_id),
+            )
+            return res.rowcount > 0
+
+    def mark_all_notifications_read(self, user_id: str) -> int:
+        """Marks all pending notifications as read for the user."""
+        with self.db.session() as conn:
+            res = conn.execute(
+                "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+                (user_id,),
+            )
+            return res.rowcount
+
+    def get_unread_notifications_count(self, user_id: str) -> int:
+        """Fast count of unread notifications for badge rendering."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0",
+                (user_id,),
+            ).fetchone()
+            return row["cnt"] if row else 0
+
+    # -------------------------------------------------------------------------
+    # Phase 7: Project Creator Attached Documents (PDFs, Markdown Specs)
+    # -------------------------------------------------------------------------
+    def add_post_document(
+        self,
+        post_id: str,
+        owner_id: str,
+        filename: str,
+        file_type: str,
+        file_size: int,
+        content_text: str,
+    ) -> Dict[str, Any]:
+        """Stores creator-attached project documentation (e.g. PDF spec, PRD)."""
+        doc_id = f"doc_{uuid.uuid4().hex[:12]}"
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            conn.execute(
+                """INSERT INTO post_documents (
+                    id, post_id, owner_id, filename, file_type, file_size, content_text, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (doc_id, post_id, owner_id, filename, file_type, file_size, content_text, now),
+            )
+            return {
+                "id": doc_id,
+                "postId": post_id,
+                "ownerId": owner_id,
+                "filename": filename,
+                "fileType": file_type,
+                "fileSize": file_size,
+                "characterCount": len(content_text),
+                "createdAt": now,
+            }
+
+    def list_post_documents(self, post_id: str) -> List[Dict[str, Any]]:
+        """Lists attached project documentation for the post."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                """SELECT id, post_id, owner_id, filename, file_type, file_size, length(content_text) as char_count, created_at
+                FROM post_documents
+                WHERE post_id = ?
+                ORDER BY created_at DESC""",
+                (post_id,),
+            ).fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "postId": r["post_id"],
+                    "ownerId": r["owner_id"],
+                    "filename": r["filename"],
+                    "fileType": r["file_type"],
+                    "fileSize": r["file_size"],
+                    "characterCount": r["char_count"],
+                    "createdAt": r["created_at"],
+                }
+                for r in rows
+            ]
+
+    def get_post_document(self, doc_id: str, user_id: str) -> Dict[str, Any]:
+        """Fetches a single post document with full content text, validating owner."""
+        with self.db.session() as conn:
+            r = conn.execute(
+                """SELECT id, post_id, owner_id, filename, file_type, file_size, content_text, length(content_text) as char_count, created_at
+                FROM post_documents
+                WHERE id = ?""",
+                (doc_id,),
+            ).fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Document not found.")
+            if r["owner_id"] != user_id:
+                raise HTTPException(status_code=403, detail="Forbidden. Only the document owner can inspect this document.")
+            return {
+                "id": r["id"],
+                "postId": r["post_id"],
+                "ownerId": r["owner_id"],
+                "filename": r["filename"],
+                "fileType": r["file_type"],
+                "fileSize": r["file_size"],
+                "characterCount": r["char_count"],
+                "contentText": r["content_text"],
+                "createdAt": r["created_at"],
+            }
+
+    def delete_post_document(self, doc_id: str, user_id: str) -> bool:
+        """Deletes an attached document with strict ownership validation."""
+        with self.db.session() as conn:
+            doc = conn.execute("SELECT owner_id FROM post_documents WHERE id = ?", (doc_id,)).fetchone()
+            if not doc:
+                raise HTTPException(status_code=404, detail="Document not found.")
+            if doc["owner_id"] != user_id:
+                raise HTTPException(status_code=403, detail="Forbidden. Only the document owner can delete this file.")
+
+            res = conn.execute("DELETE FROM post_documents WHERE id = ?", (doc_id,))
+            return res.rowcount > 0
+
+    def get_post_documents_text(self, post_id: str) -> List[Dict[str, Any]]:
+        """Fetches full content of all documents attached to a post for RAG retrieval."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT id, filename, file_type, content_text FROM post_documents WHERE post_id = ?",
+                (post_id,),
+            ).fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "filename": r["filename"],
+                    "fileType": r["file_type"],
+                    "contentText": r["content_text"],
+                }
+                for r in rows
+            ]
+
+    # =========================================================================
+    # Final AI Lab: Full Product Reviews & Review Versioning
+    # =========================================================================
+
+    def create_product_review(
+        self,
+        post_id: str,
+        owner_id: str,
+        version: int,
+        provider: str,
+        model: str,
+        source_snapshot: Dict[str, Any],
+        content_markdown: str,
+        structured_output: Dict[str, Any],
+        citations: List[Dict[str, Any]],
+        deterministic_stats: Dict[str, Any],
+        stages_completed: List[str],
+        status: str = "completed",
+        error_message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Creates an immutable product review version snapshot."""
+        review_id = f"prv_{uuid.uuid4().hex[:12]}"
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            conn.execute(
+                """INSERT INTO product_reviews (
+                    id, post_id, owner_id, version, status, provider, model,
+                    source_snapshot, content_markdown, structured_output,
+                    citations, deterministic_stats, stages_completed,
+                    error_message, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    review_id,
+                    post_id,
+                    owner_id,
+                    version,
+                    status,
+                    provider,
+                    model,
+                    json.dumps(source_snapshot),
+                    content_markdown,
+                    json.dumps(structured_output),
+                    json.dumps(citations),
+                    json.dumps(deterministic_stats),
+                    json.dumps(stages_completed),
+                    error_message,
+                    now,
+                    now if status == "completed" else None,
+                ),
+            )
+        return self.get_product_review(review_id, owner_id)
+
+    def get_product_review(self, review_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Retrieves a specific review version, optionally enforcing owner authorization."""
+        with self.db.session() as conn:
+            if owner_id:
+                row = conn.execute(
+                    "SELECT * FROM product_reviews WHERE id = ? AND owner_id = ?",
+                    (review_id, owner_id),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM product_reviews WHERE id = ?",
+                    (review_id,),
+                ).fetchone()
+
+            if not row:
+                return None
+            return self._serialize_product_review(row)
+
+    def list_product_reviews(self, post_id: str, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lists all review versions for a post in descending version order."""
+        with self.db.session() as conn:
+            if owner_id:
+                rows = conn.execute(
+                    "SELECT * FROM product_reviews WHERE post_id = ? AND owner_id = ? ORDER BY version DESC",
+                    (post_id, owner_id),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM product_reviews WHERE post_id = ? ORDER BY version DESC",
+                    (post_id,),
+                ).fetchall()
+            return [self._serialize_product_review(r) for r in rows]
+
+    def get_latest_product_review(self, post_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Retrieves the highest-version completed review for a post."""
+        with self.db.session() as conn:
+            if owner_id:
+                row = conn.execute(
+                    "SELECT * FROM product_reviews WHERE post_id = ? AND owner_id = ? AND status = 'completed' ORDER BY version DESC LIMIT 1",
+                    (post_id, owner_id),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM product_reviews WHERE post_id = ? AND status = 'completed' ORDER BY version DESC LIMIT 1",
+                    (post_id,),
+                ).fetchone()
+            if not row:
+                return None
+            return self._serialize_product_review(row)
+
+    def get_next_product_review_version(self, post_id: str) -> int:
+        """Calculates next incremental version number for a post review."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                "SELECT MAX(version) as max_ver FROM product_reviews WHERE post_id = ?",
+                (post_id,),
+            ).fetchone()
+            if row and row["max_ver"] is not None:
+                return int(row["max_ver"]) + 1
+            return 1
+
+    def get_product_source_availability(self, post_id: str, owner_id: str) -> Dict[str, Any]:
+        """Calculates available sources, eligible document list, and detects if new activity arrived since last review."""
+        with self.db.session() as conn:
+            # Current comments
+            comment_rows = conn.execute("SELECT id FROM comments WHERE post_id = ?", (post_id,)).fetchall()
+            current_comment_ids = {r["id"] for r in comment_rows}
+
+            # Current documents
+            doc_rows = conn.execute(
+                "SELECT id, filename, file_type, file_size, length(content_text) as char_count, created_at "
+                "FROM post_documents WHERE post_id = ? AND owner_id = ? ORDER BY created_at DESC",
+                (post_id, owner_id),
+            ).fetchall()
+            current_doc_ids = {r["id"] for r in doc_rows}
+
+            docs_list = [
+                {
+                    "id": r["id"],
+                    "filename": r["filename"],
+                    "fileType": r["file_type"],
+                    "fileSize": r["file_size"],
+                    "characterCount": r["char_count"],
+                    "createdAt": r["created_at"],
+                }
+                for r in doc_rows
+            ]
+
+            # Latest review
+            latest_row = conn.execute(
+                "SELECT id, version, source_snapshot, created_at FROM product_reviews "
+                "WHERE post_id = ? AND owner_id = ? ORDER BY version DESC LIMIT 1",
+                (post_id, owner_id),
+            ).fetchone()
+
+            if not latest_row:
+                return {
+                    "totalComments": len(current_comment_ids),
+                    "totalDocuments": len(current_doc_ids),
+                    "documents": docs_list,
+                    "latestReviewId": None,
+                    "latestReviewVersion": None,
+                    "latestReviewCreatedAt": None,
+                    "hasNewActivitySinceLastReview": False,
+                    "newCommentsCountSinceLastReview": 0,
+                    "newDocumentsCountSinceLastReview": 0,
+                }
+
+            snapshot = {}
+            if latest_row["source_snapshot"]:
+                try:
+                    snapshot = json.loads(latest_row["source_snapshot"])
+                except Exception:
+                    snapshot = {}
+
+            snapshot_comment_ids = set(snapshot.get("comment_ids", []))
+            snapshot_doc_ids = set(snapshot.get("doc_ids", []))
+
+            new_comments = current_comment_ids - snapshot_comment_ids
+            new_docs = current_doc_ids - snapshot_doc_ids
+            has_new = len(new_comments) > 0 or len(new_docs) > 0
+
+            return {
+                "totalComments": len(current_comment_ids),
+                "totalDocuments": len(current_doc_ids),
+                "documents": docs_list,
+                "latestReviewId": latest_row["id"],
+                "latestReviewVersion": latest_row["version"],
+                "latestReviewCreatedAt": latest_row["created_at"],
+                "hasNewActivitySinceLastReview": has_new,
+                "newCommentsCountSinceLastReview": len(new_comments),
+                "newDocumentsCountSinceLastReview": len(new_docs),
+            }
+
+    def _serialize_product_review(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Serializes SQLite product_reviews row to dictionary with parsed JSON fields."""
+        return {
+            "id": row["id"],
+            "postId": row["post_id"],
+            "ownerId": row["owner_id"],
+            "version": row["version"],
+            "status": row["status"],
+            "provider": row["provider"],
+            "model": row["model"],
+            "sourceSnapshot": json.loads(row["source_snapshot"]) if row["source_snapshot"] else {},
+            "contentMarkdown": row["content_markdown"],
+            "structuredOutput": json.loads(row["structured_output"]) if row["structured_output"] else {},
+            "citations": json.loads(row["citations"]) if row["citations"] else [],
+            "deterministicStats": json.loads(row["deterministic_stats"]) if row["deterministic_stats"] else {},
+            "stagesCompleted": json.loads(row["stages_completed"]) if row["stages_completed"] else [],
+            "errorMessage": row["error_message"],
+            "createdAt": row["created_at"],
+            "completedAt": row["completed_at"],
+        }
 
 
 # Global community repository instance

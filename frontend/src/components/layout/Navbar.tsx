@@ -10,10 +10,12 @@ import {
   Moon,
   Search,
   Layers,
+  Shield,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../common/Button';
+import { NotificationBell } from '../notifications/NotificationBell';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
@@ -25,6 +27,9 @@ export const Navbar: React.FC = () => {
     { to: '/explore', label: 'Explore', icon: <Compass className="w-4 h-4" /> },
     { to: '/saved', label: 'Saved', icon: <Bookmark className="w-4 h-4" /> },
     { to: '/activity', label: 'My Activity', icon: <Activity className="w-4 h-4" /> },
+    ...(user?.isModerator
+      ? [{ to: '/moderation', label: 'Moderation', icon: <Shield className="w-4 h-4 text-rose-500" /> }]
+      : []),
   ];
 
   return (
@@ -80,6 +85,9 @@ export const Navbar: React.FC = () => {
               /
             </kbd>
           </Link>
+
+          {/* Notifications Center */}
+          <NotificationBell />
 
           {/* Theme Toggle */}
           <button

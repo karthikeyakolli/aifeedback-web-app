@@ -6,7 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -49,7 +49,33 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Global safe exception handler
+    # Request payload size limit middleware (Abuse & DoS protection)
+    @app.middleware("http")
+    async def validate_request_size_middleware(request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > settings.max_request_size_bytes:
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "detail": f"Request entity exceeds maximum permitted limit of {settings.max_request_size_bytes} bytes."
+                        },
+                    )
+            except ValueError:
+                pass
+        return await call_next(request)
+
+    # Explicit HTTPException handler
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=getattr(exc, "headers", None) or {},
+        )
+
+    # Global safe exception handler for uncaught runtime errors
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.error(f"Unhandled exception on {request.method} {request.url.path}: {str(exc)}", exc_info=True)
@@ -61,6 +87,7 @@ def create_application() -> FastAPI:
                 "path": request.url.path,
             },
         )
+
 
     # Root health endpoint
     @app.get("/api/health", response_model=HealthResponse, tags=["Health"])

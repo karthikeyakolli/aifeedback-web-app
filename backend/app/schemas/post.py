@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import List, Optional
-from pydantic import BaseModel, Field, ConfigDict, AliasChoices
+from pydantic import BaseModel, Field, ConfigDict, AliasChoices, field_validator
 
 
 class PostBase(BaseModel):
@@ -29,6 +29,16 @@ class PostBase(BaseModel):
         description="Whether author chooses anonymous public display",
     )
 
+    @field_validator("productUrl")
+    @classmethod
+    def validate_product_url(cls, v: Optional[str]) -> Optional[str]:
+        if v and v.strip():
+            stripped = v.strip()
+            if not (stripped.startswith("http://") or stripped.startswith("https://")):
+                raise ValueError("productUrl must start with http:// or https://")
+            return stripped
+        return None
+
 
 class PostCreate(PostBase):
     """Payload for creating a post."""
@@ -44,6 +54,17 @@ class PostUpdate(BaseModel):
     productUrl: Optional[str] = Field(None, validation_alias=AliasChoices("productUrl", "product_url"))
     category: Optional[str] = None
     tags: Optional[List[str]] = None
+
+    @field_validator("productUrl")
+    @classmethod
+    def validate_product_url(cls, v: Optional[str]) -> Optional[str]:
+        if v and v.strip():
+            stripped = v.strip()
+            if not (stripped.startswith("http://") or stripped.startswith("https://")):
+                raise ValueError("productUrl must start with http:// or https://")
+            return stripped
+        return None
+
 
 
 class PostAuthor(BaseModel):
@@ -83,3 +104,19 @@ class PostVoteResponse(BaseModel):
 class PostBookmarkResponse(BaseModel):
     """Bookmark toggle response."""
     userHasBookmarked: bool
+
+
+class PostDocumentResponse(BaseModel):
+    """Metadata of an attached project document."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    postId: str = Field(..., validation_alias=AliasChoices("postId", "post_id"))
+    ownerId: str = Field(..., validation_alias=AliasChoices("ownerId", "owner_id"))
+    filename: str
+    fileType: str = Field(..., validation_alias=AliasChoices("fileType", "file_type"))
+    fileSize: int = Field(..., validation_alias=AliasChoices("fileSize", "file_size"))
+    characterCount: int = Field(0, validation_alias=AliasChoices("characterCount", "character_count"))
+    contentText: Optional[str] = Field(None, validation_alias=AliasChoices("contentText", "content_text"))
+    createdAt: str = Field(..., validation_alias=AliasChoices("createdAt", "created_at"))
+

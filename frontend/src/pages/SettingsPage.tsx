@@ -45,39 +45,39 @@ export const SettingsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setTheme('light')}
-            className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
               theme === 'light'
-                ? 'border-blue-600 bg-blue-50/50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                ? 'border-indigo-600 bg-indigo-50/60 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 ring-1 ring-indigo-500'
                 : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
             }`}
           >
-            <Sun className="w-5 h-5 mb-1.5" />
+            <Sun className="w-5 h-5 mb-1.5 text-amber-500" />
             <span>Light</span>
           </button>
 
           <button
             type="button"
             onClick={() => setTheme('dark')}
-            className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
               theme === 'dark'
-                ? 'border-blue-600 bg-blue-50/50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                ? 'border-indigo-600 bg-indigo-50/60 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 ring-1 ring-indigo-500'
                 : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
             }`}
           >
-            <Moon className="w-5 h-5 mb-1.5" />
+            <Moon className="w-5 h-5 mb-1.5 text-indigo-400" />
             <span>Dark</span>
           </button>
 
           <button
             type="button"
             onClick={() => setTheme('system')}
-            className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
               theme === 'system'
-                ? 'border-blue-600 bg-blue-50/50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                ? 'border-indigo-600 bg-indigo-50/60 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 ring-1 ring-indigo-500'
                 : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
             }`}
           >
-            <Laptop className="w-5 h-5 mb-1.5" />
+            <Laptop className="w-5 h-5 mb-1.5 text-slate-400" />
             <span>System</span>
           </button>
         </div>

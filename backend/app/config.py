@@ -3,8 +3,20 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import List
 from pydantic import BaseModel, Field
+
+try:
+    from dotenv import load_dotenv
+    # Search root .env relative to this file or current working directory
+    env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
 
 
 class Settings(BaseModel):
@@ -33,11 +45,30 @@ class Settings(BaseModel):
     supabase_anon_key: str = os.getenv("SUPABASE_ANON_KEY", "")
     supabase_service_role_key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
-    # AI Configuration (Phase 3+)
-    ai_provider: str = os.getenv("AI_PROVIDER", "gemini")
+    # Authentication Configuration
+    # Options: "auto", "supabase", "local"
+    # In production (ENVIRONMENT=production), "local" auth is prohibited.
+    auth_provider: str = os.getenv("AUTH_PROVIDER", "auto")
+    supabase_jwt_secret: str = os.getenv("SUPABASE_JWT_SECRET", "")
+    supabase_jwt_algorithm: str = os.getenv("SUPABASE_JWT_ALGORITHM", "HS256")
+    local_jwt_secret: str = os.getenv("JWT_SECRET_KEY", "pri-insecure-dev-secret-key-change-in-prod-983172")
+
+    # Security & Request Limits
+    max_request_size_bytes: int = int(os.getenv("MAX_REQUEST_SIZE_BYTES", str(2 * 1024 * 1024)))  # 2MB default
+
+    # AI Configuration (Phase 3 & 4 Engine)
+    ai_provider: str = os.getenv("AI_PROVIDER", "auto")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
-    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    ai_timeout_seconds: int = int(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "25"))
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    groq_model: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    ai_timeout_seconds: int = int(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "30"))
+    ai_max_retries: int = int(os.getenv("AI_MAX_RETRIES", "2"))
+    ai_max_output_tokens: int = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "4096"))
+    max_analysis_comments: int = int(os.getenv("MAX_ANALYSIS_COMMENTS", "100"))
+    ai_cooldown_seconds: int = int(os.getenv("AI_COOLDOWN_SECONDS", "30"))
 
 
 settings = Settings()
+
+

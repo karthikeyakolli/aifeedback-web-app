@@ -2,44 +2,103 @@
 
 @layer base {
   :root {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f8fafc;
-    --bg-tertiary: #f1f5f9;
-    --bg-card: #ffffff;
-    --border-color: #e2e8f0;
-    --border-subtle: #edf2f7;
-    --text-primary: #0f172a;
-    --text-secondary: #475569;
-    --text-muted: #64748b;
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --accent-subtle: #eff6ff;
+    color-scheme: light;
+    --bg-app: #f7f8fc;
+    --bg-surface: #ffffff;
+    --bg-secondary: #f1f3f9;
+    --text-primary: #172033;
+    --text-muted: #667085;
+    --border-subtle: #e6e8ef;
+    --border-color: #e6e8ef;
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --primary-subtle: rgba(79, 70, 229, 0.08);
+    --primary-foreground: #ffffff;
+    --evidence-community: #0f766e;
+    --evidence-document: #2563eb;
+    --ai-synthesis: #7c3aed;
+    --card-shadow: 0 1px 3px rgba(23, 32, 51, 0.05), 0 1px 2px rgba(23, 32, 51, 0.03);
+    --card-shadow-hover: 0 4px 14px rgba(23, 32, 51, 0.08);
+    --focus-ring: #4f46e5;
+
+    /* Neomorphic / Soft-tactile surface tokens */
+    --neomorph-shadow: 3px 3px 10px rgba(23, 32, 51, 0.05), -3px -3px 10px rgba(255, 255, 255, 0.95);
+    --neomorph-shadow-hover: 5px 5px 15px rgba(23, 32, 51, 0.08), -5px -5px 15px rgba(255, 255, 255, 1);
+    --neomorph-inset: inset 2px 2px 4px rgba(23, 32, 51, 0.06), inset -2px -2px 4px rgba(255, 255, 255, 0.9);
+
+    /* Legacy mapping for backward-compatibility */
+    --bg-primary: var(--bg-surface);
+    --bg-tertiary: var(--bg-secondary);
+    --bg-card: var(--bg-surface);
+    --text-secondary: var(--text-muted);
+    --accent: var(--primary);
+    --accent-hover: var(--primary-hover);
+    --accent-subtle: var(--primary-subtle);
   }
 
   .dark {
-    --bg-primary: #090d16;
-    --bg-secondary: #0f1422;
-    --bg-tertiary: #171d30;
-    --bg-card: #121829;
-    --border-color: #1e293b;
-    --border-subtle: #172033;
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --accent: #3b82f6;
-    --accent-hover: #60a5fa;
-    --accent-subtle: rgba(59, 130, 246, 0.12);
+    color-scheme: dark;
+    --bg-app: #0d1321;
+    --bg-surface: #151d2e;
+    --bg-secondary: #1b2638;
+    --text-primary: #eef2ff;
+    --text-muted: #a6b0c3;
+    --border-subtle: #293449;
+    --border-color: #293449;
+    --primary: #818cf8;
+    --primary-hover: #6366f1;
+    --primary-subtle: rgba(129, 140, 248, 0.15);
+    --primary-foreground: #0d1321;
+    --evidence-community: #2dd4bf;
+    --evidence-document: #60a5fa;
+    --ai-synthesis: #a78bfa;
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.45);
+    --focus-ring: #818cf8;
+
+    /* Neomorphic / Soft-tactile surface tokens */
+    --neomorph-shadow: 3px 3px 12px rgba(0, 0, 0, 0.4), -2px -2px 8px rgba(35, 48, 74, 0.3);
+    --neomorph-shadow-hover: 5px 5px 18px rgba(0, 0, 0, 0.55), -3px -3px 12px rgba(35, 48, 74, 0.4);
+    --neomorph-inset: inset 2px 2px 4px rgba(0, 0, 0, 0.5), inset -2px -2px 4px rgba(35, 48, 74, 0.25);
+
+    /* Legacy mapping for backward-compatibility */
+    --bg-primary: var(--bg-surface);
+    --bg-tertiary: var(--bg-secondary);
+    --bg-card: var(--bg-surface);
+    --text-secondary: var(--text-muted);
+    --accent: var(--primary);
+    --accent-hover: var(--primary-hover);
+    --accent-subtle: var(--primary-subtle);
   }
 
   body {
-    background-color: var(--bg-primary);
+    background-color: var(--bg-app);
     color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    line-height: 1.6;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
     min-height: 100vh;
     overflow-x: hidden;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
+}
+
+/* Reduced motion preference compliance */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Accessible focus outline */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 /* Custom scrollbars */
@@ -53,10 +112,43 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
+  background: var(--border-subtle);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* Neomorphic & Tactile UI Utilities */
+.neomorph-card {
+  background-color: var(--bg-surface);
+  box-shadow: var(--neomorph-shadow);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  transition: box-shadow 0.2s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.neomorph-card:hover {
+  box-shadow: var(--neomorph-shadow-hover);
+}
+
+.neomorph-inset {
+  background-color: var(--bg-secondary);
+  box-shadow: var(--neomorph-inset);
+  border: 1px solid var(--border-subtle);
+}
+
+.neomorph-pill {
+  background-color: var(--bg-surface);
+  box-shadow: var(--neomorph-shadow);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.15s ease;
+}
+
+.neomorph-pill:active,
+.neomorph-pill[aria-pressed="true"] {
+  background-color: var(--bg-secondary);
+  box-shadow: var(--neomorph-inset);
+}
+

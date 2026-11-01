@@ -8,27 +8,33 @@ interface FeedTabsProps {
 
 export const FeedTabs: React.FC<FeedTabsProps> = ({ currentSort, onSelectSort }) => {
   const tabs = [
-    { id: 'trending', label: 'Trending', icon: <Flame className="w-4 h-4" /> },
-    { id: 'recent', label: 'Recent', icon: <Clock className="w-4 h-4" /> },
-    { id: 'comments', label: 'Most Discussed', icon: <MessageSquareText className="w-4 h-4" /> },
+    { id: 'trending', label: 'Popular', icon: <Flame className="w-4 h-4 text-amber-500" /> },
+    { id: 'recent', label: 'Recent', icon: <Clock className="w-4 h-4 text-blue-500" /> },
+    { id: 'comments', label: 'Most Discussed', icon: <MessageSquareText className="w-4 h-4 text-emerald-500" /> },
   ];
 
   return (
-    <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800">
+    <div
+      role="tablist"
+      aria-label="Feed sorting options"
+      className="inline-flex p-1 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] neomorph-inset"
+    >
       {tabs.map((tab) => {
         const isActive = currentSort === tab.id;
         return (
           <button
             key={tab.id}
+            role="tab"
+            aria-selected={isActive}
             onClick={() => onSelectSort(tab.id)}
-            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${
               isActive
-                ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             {tab.icon}
-            {tab.label}
+            <span>{tab.label}</span>
           </button>
         );
       })}
