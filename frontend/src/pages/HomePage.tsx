@@ -5,9 +5,6 @@ import {
   Plus,
   Search,
   X,
-  Compass,
-  MessageSquareCheck,
-  Brain,
   HelpCircle,
   Package,
   ShieldCheck,
@@ -16,6 +13,10 @@ import {
   ArrowRight,
   UserCheck,
   Crown,
+  Radio,
+  GitCompare,
+  CheckCircle2,
+  TrendingUp,
 } from 'lucide-react';
 import type { Post } from '../types';
 import { api } from '../services/api';
@@ -27,6 +28,14 @@ import { FeedTabs } from '../components/feed/FeedTabs';
 import { EmptyState } from '../components/common/EmptyState';
 import { Button } from '../components/common/Button';
 import { FeedSkeleton } from '../components/common/LoadingSkeletons';
+
+const LIVE_ACTIVITIES = [
+  { icon: '🔥', text: 'Sarah Chen published Review V2 for ReflectAI • 89% evidence sample coverage' },
+  { icon: '🎙️', text: 'Alex & Jordan synthesized dual-host podcast briefing in 1.3s' },
+  { icon: '⚡', text: 'BM25 engine indexed 142 PDF specification chunks without hallucination' },
+  { icon: '💬', text: 'Elena Vance grounded 4 UX accessibility friction points in thread' },
+  { icon: '🚀', text: 'Marcus Lee exported 3 roadmap tickets directly to Linear format' },
+];
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -48,6 +57,16 @@ export const HomePage: React.FC = () => {
 
   const isPublisher = Boolean(user && userPublishedPosts.length > 0);
   const isReviewerOnly = Boolean(user && userPublishedPosts.length === 0);
+
+  // Live real-time activity ticker index
+  const [tickerIdx, setTickerIdx] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTickerIdx((prev) => (prev + 1) % LIVE_ACTIVITIES.length);
+    }, 3800);
+    return () => clearInterval(timer);
+  }, []);
 
   // Social Translucence & First-Time Visitor Onboarding (Cho & Wash, 2021)
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
@@ -89,6 +108,10 @@ export const HomePage: React.FC = () => {
   // Client-side text & post-type filter
   const filteredPosts = useMemo(() => {
     return posts.filter((post) => {
+      // Audio Ready tab filter
+      if (sort === 'audio' && !post.hasAiAnalysis) {
+        return false;
+      }
       // Post Type Filter
       if (selectedPostType !== 'all' && post.postType !== selectedPostType) {
         return false;
@@ -104,11 +127,140 @@ export const HomePage: React.FC = () => {
       }
       return true;
     });
-  }, [posts, selectedPostType, searchQuery]);
+  }, [posts, selectedPostType, searchQuery, sort]);
 
   return (
     <div className="space-y-6 pb-12 max-w-6xl mx-auto">
-      {/* 1. Differentiated Experience: Project Publisher / Owner View */}
+      {/* 0. Live Real-Time Activity Ticker Pill */}
+      <div className="flex items-center justify-between px-3.5 py-1.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-xs text-xs">
+        <div className="flex items-center gap-2 overflow-hidden min-w-0">
+          <span className="flex h-2 w-2 relative shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span className="font-bold text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0">
+            Live Stream
+          </span>
+          <span className="text-[var(--text-muted)] text-[11px] truncate animate-in fade-in slide-in-from-left-2 duration-300">
+            <span className="mr-1">{LIVE_ACTIVITIES[tickerIdx].icon}</span>
+            {LIVE_ACTIVITIES[tickerIdx].text}
+          </span>
+        </div>
+
+        <Link
+          to="/posts/post_reflect_01?tab=insights"
+          className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 shrink-0 pl-2"
+        >
+          <span>Demo Lab</span>
+          <ArrowRight className="w-3 h-3" />
+        </Link>
+      </div>
+
+      {/* 1. Global Commercial Hero Banner & Value Proposition */}
+      {(!user || showOnboarding) && (
+        <section
+          aria-label="ResearchIntel Product Launchpad"
+          className="relative p-6 sm:p-10 rounded-3xl border border-indigo-200/80 dark:border-indigo-900/60 bg-gradient-to-br from-indigo-50/90 via-[var(--bg-surface)] to-purple-50/40 dark:from-indigo-950/40 dark:via-slate-900 dark:to-purple-950/20 shadow-md transition-all overflow-hidden"
+        >
+          {/* Ambient Glow Orb */}
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 blur-3xl rounded-full pointer-events-none" />
+
+          {user && (
+            <button
+              onClick={dismissOnboarding}
+              aria-label="Dismiss hero banner"
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+
+          <div className="relative z-10 max-w-3xl space-y-4">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-100/90 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200/90 dark:border-indigo-800 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>ResearchIntel 2.0 • The AI Product Intelligence Network</span>
+            </div>
+
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-[var(--text-primary)] leading-[1.15]">
+              Where Breakthrough Products Are Forged by Community Truth
+            </h1>
+
+            <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed max-w-2xl">
+              Turn raw, unvarnished user critique into grounded roadmap decisions. Combines <strong>NotebookLM-style 13-section reviews</strong>, <strong>dual-host podcast briefings</strong>, and <strong>1-click Linear issue export</strong>.
+            </p>
+
+            {/* Quick Hero CTAs */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <Link to="/create">
+                <Button
+                  size="md"
+                  variant="primary"
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold shadow-md h-10 px-5 rounded-xl cursor-pointer"
+                  leftIcon={<Rocket className="w-4 h-4 text-amber-300" />}
+                >
+                  Launch Your Product Discussion
+                </Button>
+              </Link>
+
+              <Link to="/posts/post_reflect_01?tab=insights">
+                <Button
+                  size="md"
+                  variant="outline"
+                  className="font-bold border-indigo-300 dark:border-indigo-700 h-10 px-4 rounded-xl cursor-pointer"
+                  leftIcon={<Radio className="w-4 h-4 text-purple-500" />}
+                >
+                  Listen to Audio Briefing
+                </Button>
+              </Link>
+            </div>
+
+            {/* 4-Tile Bento Superpowers Showcase */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
+              <div className="p-3.5 rounded-2xl bg-[var(--bg-surface)]/90 border border-[var(--border-subtle)] shadow-2xs space-y-1.5 hover:border-indigo-400/50 transition-colors">
+                <div className="flex items-center gap-2 font-bold text-xs text-[var(--text-primary)]">
+                  <Radio className="w-4 h-4 text-purple-500" />
+                  <span>Dual-Host Audio</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                  Listen to feedback synthesized as an interactive 2-host podcast with live transcript seeking.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-[var(--bg-surface)]/90 border border-[var(--border-subtle)] shadow-2xs space-y-1.5 hover:border-indigo-400/50 transition-colors">
+                <div className="flex items-center gap-2 font-bold text-xs text-[var(--text-primary)]">
+                  <GitCompare className="w-4 h-4 text-indigo-500" />
+                  <span>Evolution Diff</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                  Compare V1 vs V2 milestones. Visually track resolved friction and newly emerged user complaints.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-[var(--bg-surface)]/90 border border-[var(--border-subtle)] shadow-2xs space-y-1.5 hover:border-indigo-400/50 transition-colors">
+                <div className="flex items-center gap-2 font-bold text-xs text-[var(--text-primary)]">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  <span>13-Section Review</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                  Grounded in SQLite & BM25 with frozen citations. Zero hallucinations or fake counts.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-[var(--bg-surface)]/90 border border-[var(--border-subtle)] shadow-2xs space-y-1.5 hover:border-indigo-400/50 transition-colors">
+                <div className="flex items-center gap-2 font-bold text-xs text-[var(--text-primary)]">
+                  <TrendingUp className="w-4 h-4 text-amber-500" />
+                  <span>1-Click Issue Sync</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                  Turn verified user friction into pre-formatted Linear and GitHub roadmap tickets instantly.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* 2. Differentiated Experience: Project Publisher / Owner View */}
       {isPublisher && (
         <section
           aria-label="Creator Studio Command Center"
@@ -242,84 +394,6 @@ export const HomePage: React.FC = () => {
                 Start New Project Discussion
               </Button>
             </Link>
-          </div>
-        </section>
-      )}
-
-      {/* 3. First-time Community Experience for Guests / Signed-Out Visitors */}
-      {!user && showOnboarding && (
-        <section
-          aria-label="Community Welcome and Overview"
-          className="relative p-6 sm:p-7 rounded-3xl border border-indigo-200/80 dark:border-indigo-900/60 bg-gradient-to-br from-indigo-50/70 via-[var(--bg-secondary)]/50 to-[var(--bg-surface)] dark:from-indigo-950/30 dark:via-slate-900 dark:to-slate-950 shadow-sm transition-all"
-        >
-          <button
-            onClick={dismissOnboarding}
-            aria-label="Dismiss community introduction banner"
-            className="absolute top-4 right-4 p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100/90 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200/90 dark:border-indigo-800 mb-3">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              Welcome to ResearchIntel Community
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--text-primary)] leading-tight mb-2">
-              Unvarnished Community Feedback, Synthesized with Evidence
-            </h1>
-
-            <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed mb-5">
-              A peer-review community engineered for constructive criticism and rigorous product discovery. Review real working apps or submit your own MVP.
-            </p>
-
-            {/* 3 Pillars (Cho & Wash 2021 Visible Value Proposition) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-              <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] neomorph-card">
-                <div className="flex items-center gap-2 font-bold text-xs text-[var(--text-primary)] mb-1">
-                  <MessageSquareCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                  1. Candid Feedback
-                </div>
-                <p className="text-[12px] text-[var(--text-muted)] leading-relaxed">
-                  Post anonymously or with your reputation badge. Honest critique without retaliation.
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] neomorph-card">
-                <div className="flex items-center gap-2 font-bold text-xs text-[var(--text-primary)] mb-1">
-                  <Compass className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  2. Bounded Threading
-                </div>
-                <p className="text-[12px] text-[var(--text-muted)] leading-relaxed">
-                  Structured replies capped at depth 2 to prevent mobile staircasing and maintain civil context.
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] neomorph-card">
-                <div className="flex items-center gap-2 font-bold text-xs text-[var(--text-primary)] mb-1">
-                  <Brain className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  3. Creator Workspace
-                </div>
-                <p className="text-[12px] text-[var(--text-muted)] leading-relaxed">
-                  Project owners get an AI Research Studio to ground suggestions against uploaded specs and feedback.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Link to="/create">
-                <Button size="md" variant="primary" leftIcon={<Plus className="w-4 h-4" />}>
-                  Start a Discussion
-                </Button>
-              </Link>
-              <button
-                onClick={dismissOnboarding}
-                className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-              >
-                Dismiss Introduction
-              </button>
-            </div>
           </div>
         </section>
       )}

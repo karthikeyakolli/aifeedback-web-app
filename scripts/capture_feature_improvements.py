@@ -220,6 +220,20 @@ async def main():
         setup_js=js_diff,
     )
 
+    # 5. Commercial Homepage Hero & Live Ticker (Dark Mode)
+    await capture_page(
+        target_url="/",
+        output_filename="commercial_homepage_dark.png",
+        dark_mode=True,
+    )
+
+    # 6. Commercial Homepage Hero & Live Ticker (Light Mode)
+    await capture_page(
+        target_url="/",
+        output_filename="commercial_homepage_light.png",
+        dark_mode=False,
+    )
+
     print("All feature screenshots captured successfully!")
 
 

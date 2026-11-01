@@ -9,12 +9,15 @@ import {
   Package,
   Share2,
   Check,
+  Flame,
+  Radio,
 } from 'lucide-react';
 import type { Post } from '../../types';
 import { Badge } from '../common/Badge';
 import { formatTimeAgo } from '../../lib/utils';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { playHapticPop } from '../../lib/haptics';
 
 interface PostCardProps {
   post: Post;
@@ -28,6 +31,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
   const [hasBookmarked, setHasBookmarked] = useState(post.userHasBookmarked || false);
   const [isVoting, setIsVoting] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
+  const [showVoteParticle, setShowVoteParticle] = useState(false);
 
   const isOwner = Boolean(user && post.author?.id && user.id === post.author.id);
 
@@ -51,6 +55,14 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
     }
     if (isVoting) return;
     setIsVoting(true);
+
+    const willUpvote = !hasUpvoted;
+    playHapticPop(willUpvote ? 620 : 380);
+
+    if (willUpvote) {
+      setShowVoteParticle(true);
+      setTimeout(() => setShowVoteParticle(false), 700);
+    }
 
     const prevVotes = upvotes;
     const prevStatus = hasUpvoted;
@@ -103,9 +115,14 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
   };
 
   return (
-    <div className="neomorph-card p-4 sm:p-5 flex gap-3 sm:gap-4 transition-all hover:border-indigo-400/50 dark:hover:border-indigo-500/50 group">
-      {/* Upvote Pill (Tactile Neomorphic Control) */}
-      <div className="flex flex-col items-center shrink-0">
+    <div className="glow-card neomorph-card p-4 sm:p-5 flex gap-3 sm:gap-4 transition-all hover:border-indigo-500/50 dark:hover:border-indigo-400/50 group rounded-2xl relative overflow-hidden">
+      {/* Upvote Pill (Tactile Neomorphic Control with Flame Burst) */}
+      <div className="flex flex-col items-center shrink-0 relative">
+        {showVoteParticle && (
+          <span className="absolute -top-3.5 font-black text-xs text-amber-500 dark:text-amber-400 animate-float-fade pointer-events-none select-none drop-shadow-xs">
+            +1 🔥
+          </span>
+        )}
         <button
           onClick={handleVote}
           disabled={isVoting}
@@ -116,18 +133,18 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
               ? `Remove upvote from "${post.title}"`
               : `Upvote "${post.title}" (${upvotes} votes)`
           }
-          className={`flex flex-col items-center justify-center w-12 py-2.5 rounded-xl border transition-all cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px] ${
+          className={`relative flex flex-col items-center justify-center w-12 py-2.5 rounded-2xl border transition-all duration-150 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[48px] ${
             hasUpvoted
-              ? 'bg-indigo-50 border-indigo-300 text-indigo-600 dark:bg-indigo-950/60 dark:border-indigo-600 dark:text-indigo-400 font-bold neomorph-inset'
-              : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-slate-300 dark:hover:border-slate-700 neomorph-pill'
+              ? 'bg-gradient-to-b from-amber-50 to-orange-50/60 dark:from-amber-950/40 dark:to-orange-950/20 border-amber-300 dark:border-amber-600/80 text-amber-600 dark:text-amber-400 font-extrabold shadow-[0_2px_12px_rgba(245,158,11,0.2)]'
+              : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 text-[var(--text-muted)] hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-700/60'
           }`}
         >
-          <ChevronUp
-            className={`w-4 h-4 transition-transform ${
-              hasUpvoted ? 'translate-y-[-1px] stroke-[2.5]' : ''
-            }`}
-          />
-          <span className="text-xs font-bold leading-none mt-1">{upvotes}</span>
+          {hasUpvoted ? (
+            <Flame className="w-4 h-4 text-amber-500 dark:text-amber-400 fill-amber-500 animate-pulse" />
+          ) : (
+            <ChevronUp className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" />
+          )}
+          <span className="text-xs font-bold leading-none mt-1 font-mono">{upvotes}</span>
         </button>
       </div>
 
@@ -150,6 +167,20 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
           <Badge variant="outline" size="sm">
             {post.category}
           </Badge>
+
+          {upvotes >= 15 && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-mono">
+              <Flame className="w-2.5 h-2.5 fill-amber-500" />
+              Hot
+            </span>
+          )}
+
+          {post.hasAiAnalysis && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 font-mono">
+              <Radio className="w-2.5 h-2.5 text-indigo-500 animate-pulse" />
+              Audio Briefing
+            </span>
+          )}
 
           {post.isAnonymous ? (
             <Badge variant="anonymous" size="sm" icon>
