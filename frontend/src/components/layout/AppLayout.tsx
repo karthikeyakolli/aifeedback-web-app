@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { RightInspector } from './RightInspector';
 import { MobileDrawer } from './MobileDrawer';
 import { MobileNav } from './MobileNav';
 import { Footer } from './Footer';
@@ -14,7 +15,7 @@ export const AppLayout: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { isLoading } = useAuth();
 
-  // Persistent sidebar collapse state
+  // Persistent sidebar collapse state (68-72px vs 240-256px)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     return localStorage.getItem('pri_sidebar_collapsed') === 'true';
   });
@@ -52,6 +53,11 @@ export const AppLayout: React.FC = () => {
       return 'max-w-[1600px] px-3 sm:px-6';
     }
 
+    // Feedback Report & Grounded Studio gets wide readable canvas
+    if (path.includes('/feedback') || path.includes('/review')) {
+      return 'max-w-[1400px] px-4 sm:px-6';
+    }
+
     // Discussion reading & composition gets focused reading layout
     if (path.startsWith('/posts/')) {
       return 'max-w-4xl px-4 sm:px-6';
@@ -71,7 +77,6 @@ export const AppLayout: React.FC = () => {
       <AppLoadingScreen
         onRetry={() => window.location.reload()}
         onContinueGuest={() => {
-          // Allow bypass to view feed as guest
           window.location.reload();
         }}
       />
@@ -79,8 +84,8 @@ export const AppLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex bg-[var(--bg-app)] text-[var(--text-primary)] transition-colors antialiased">
-      {/* Desktop Sidebar (~240px or ~72px) */}
+    <div className="min-h-screen flex bg-[var(--canvas)] text-[var(--text-primary)] transition-colors antialiased">
+      {/* Desktop Sidebar (250px expanded or 72px collapsed rail) */}
       <Sidebar
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={toggleSidebarCollapse}
@@ -88,7 +93,7 @@ export const AppLayout: React.FC = () => {
 
       {/* Main Content Column */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-        {/* Top Header (~64px) */}
+        {/* Top Header (64px) with Breadcrumbs and Space Indicator */}
         <Header
           onOpenMobileMenu={() => setIsMobileDrawerOpen(true)}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
@@ -106,20 +111,25 @@ export const AppLayout: React.FC = () => {
           onClose={() => setIsMobileDrawerOpen(false)}
         />
 
-        {/* Dynamic Main Body Content */}
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className={`flex-1 w-full mx-auto py-6 pb-24 md:pb-12 transition-all ${getContentContainerClass()}`}
-        >
-          <Outlet />
-        </main>
+        {/* Center Canvas + Contextual Right Inspector Split Layout (1fr / 320px) */}
+        <div className="flex-1 flex min-w-0">
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className={`flex-1 w-full mx-auto py-6 pb-24 md:pb-12 transition-all ${getContentContainerClass()}`}
+          >
+            <Outlet />
+          </main>
+
+          {/* Contextual Right Inspector Panel (Collapsible 280-340px) */}
+          <RightInspector />
+        </div>
 
         {/* Application Footer */}
         <Footer />
 
-        {/* Mobile Bottom Navigation Bar (< 768px) */}
-        <MobileNav />
+        {/* Mobile Bottom Navigation Bar (< 640px) */}
+        <MobileNav onOpenMenu={() => setIsMobileDrawerOpen(true)} />
       </div>
     </div>
   );

@@ -5,83 +5,83 @@ import {
   Layers,
   MessageSquare,
   X,
-  Tag,
   ArrowUpDown,
 } from 'lucide-react';
-import type { Post } from '../types';
+import type { Post, PublicProject } from '../types';
 import { api } from '../services/api';
-import { extractProductsFromPosts } from '../lib/products';
-import { ProductCard } from '../components/product/ProductCard';
+import { PublicProjectCard } from '../components/public/PublicProjectCard';
 import { PostCard } from '../components/feed/PostCard';
 import { EmptyState } from '../components/common/EmptyState';
 import { CategoryFilter } from '../components/feed/CategoryFilter';
 
-type ExploreView = 'products' | 'discussions';
+type ExploreView = 'projects' | 'discussions';
 
 export const ExplorePage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<ExploreView>('products');
+  const [activeTab, setActiveTab] = useState<ExploreView>('projects');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'popular' | 'discussed' | 'recent'>('popular');
+
+  // Real backend public projects
+  const [publicProjects, setPublicProjects] = useState<PublicProject[]>([]);
+  // Legacy discussions for community tab
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch Public Projects & Discussions
   useEffect(() => {
+    let isMounted = true;
     setIsLoading(true);
-    api.getPosts()
-      .then((data) => setPosts(data))
-      .catch((err) => console.error('Failed to load posts:', err))
-      .finally(() => setIsLoading(false));
-  }, []);
 
-  // Extract products from posts
-  const products = useMemo(() => extractProductsFromPosts(posts), [posts]);
+    const categoryParam = selectedCategory !== 'All' ? selectedCategory : undefined;
+    const searchParam = searchQuery.trim() || undefined;
 
-  // Extract unique tags
-  const allTags = useMemo(() => Array.from(new Set(posts.flatMap((p) => p.tags || []))), [posts]);
+    Promise.allSettled([
+      api.getPublicProjects({
+        category: categoryParam,
+        search: searchParam,
+      }),
+      api.getPosts(),
+    ])
+      .then(([projRes, postsRes]) => {
+        if (!isMounted) return;
+        if (projRes.status === 'fulfilled') {
+          setPublicProjects(projRes.value);
+        }
+        if (postsRes.status === 'fulfilled') {
+          setPosts(postsRes.value);
+        }
+      })
+      .catch((err) => console.error('Failed to load explore data:', err))
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
 
-  // Filtered products
-  const filteredProducts = useMemo(() => {
-    let res = [...products];
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedCategory, searchQuery]);
 
-    if (selectedCategory !== 'All') {
-      res = res.filter((p) => p.category === selectedCategory);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      res = res.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.tagline.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          (p.tags && p.tags.some((t: string) => t.toLowerCase().includes(q)))
-      );
-    }
-
-    if (selectedTag) {
-      res = res.filter((p) => p.tags && p.tags.includes(selectedTag));
-    }
-
-    // Sort
+  // Client-side Sort on Public Projects
+  const sortedProjects = useMemo(() => {
+    const list = [...publicProjects];
     if (sortBy === 'popular') {
-      res.sort((a, b) => b.upvotesCount - a.upvotesCount);
+      list.sort((a, b) => b.upvotesCount - a.upvotesCount);
     } else if (sortBy === 'discussed') {
-      res.sort((a, b) => b.totalReviews - a.totalReviews);
+      list.sort((a, b) => b.reviewsCount - a.reviewsCount);
     } else if (sortBy === 'recent') {
-      res.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
-
-    return res;
-  }, [products, selectedCategory, searchQuery, selectedTag, sortBy]);
+    return list;
+  }, [publicProjects, sortBy]);
 
   // Filtered discussions
   const filteredDiscussions = useMemo(() => {
     let res = [...posts];
 
     if (selectedCategory !== 'All') {
-      res = res.filter((p) => p.category === selectedCategory);
+      res = res.filter((p) => p.category.toLowerCase() === selectedCategory.toLowerCase());
     }
 
     if (searchQuery.trim()) {
@@ -109,57 +109,63 @@ export const ExplorePage: React.FC = () => {
     return res;
   }, [posts, selectedCategory, searchQuery, selectedTag, sortBy]);
 
+  const handleUpvoteChange = (projectId: string, upvotesCount: number) => {
+    setPublicProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, upvotesCount } : p))
+    );
+  };
+
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-12">
+    <div className="space-y-6 max-w-6xl mx-auto pb-16">
       {/* Page Header */}
       <div>
         <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 uppercase tracking-wider">
           <Compass className="w-4 h-4" />
-          <span>Product Discovery & Reviews</span>
+          <span>Public Discovery & AI Scrutiny</span>
         </div>
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--text-primary)]">
-          Explore Products & Discussions
+          Explore Projects & AI Feedback
         </h1>
         <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
-          Discover working developer tools, SaaS applications, and MVPs seeking candid community critique.
+          Discover verified developer tools, applications, and architectures seeking rigorous technical critique and community validation.
         </p>
       </div>
 
       {/* Discovery Mode Switcher & Search Bar */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* View Segmented Switcher (Tactile Neomorphic) */}
+          {/* View Segmented Switcher */}
           <div
             role="tablist"
             aria-label="Discovery View"
-            className="inline-flex p-1 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] neomorph-inset self-start"
+            className="inline-flex p-1 rounded-xl bg-[var(--surface-raised)] border border-[var(--border-default)] self-start"
           >
             <button
               role="tab"
-              aria-selected={activeTab === 'products'}
-              onClick={() => setActiveTab('products')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'products'
-                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+              aria-selected={activeTab === 'projects'}
+              onClick={() => setActiveTab('projects')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'projects'
+                  ? 'bg-[var(--surface)] text-[var(--text-primary)] shadow-xs'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               }`}
             >
               <Layers className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Products ({products.length})</span>
+              <span>Public Projects ({sortedProjects.length})</span>
             </button>
 
             <button
               role="tab"
               aria-selected={activeTab === 'discussions'}
               onClick={() => setActiveTab('discussions')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'discussions'
-                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+                  ? 'bg-[var(--surface)] text-[var(--text-primary)] shadow-xs'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
-              <span>Discussions ({posts.length})</span>
+              <MessageSquare className="w-3.5 h-3.5 text-sky-500" />
+              <span>Community Discussions ({filteredDiscussions.length})</span>
             </button>
           </div>
 
@@ -167,20 +173,20 @@ export const ExplorePage: React.FC = () => {
           <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] self-end sm:self-auto">
             <ArrowUpDown className="w-3.5 h-3.5" />
             <span className="font-medium hidden sm:inline">Sort:</span>
-            <div className="inline-flex rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-0.5 text-xs">
+            <div className="inline-flex rounded-lg border border-[var(--border-default)] bg-[var(--surface)] p-0.5 text-xs">
               <button
                 onClick={() => setSortBy('popular')}
-                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-colors cursor-pointer ${
                   sortBy === 'popular'
                     ? 'bg-indigo-600 text-white font-semibold'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                 }`}
               >
-                Popular
+                Most Upvoted
               </button>
               <button
                 onClick={() => setSortBy('discussed')}
-                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-colors cursor-pointer ${
                   sortBy === 'discussed'
                     ? 'bg-indigo-600 text-white font-semibold'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -190,7 +196,7 @@ export const ExplorePage: React.FC = () => {
               </button>
               <button
                 onClick={() => setSortBy('recent')}
-                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-colors cursor-pointer ${
                   sortBy === 'recent'
                     ? 'bg-indigo-600 text-white font-semibold'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -210,12 +216,12 @@ export const ExplorePage: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={
-              activeTab === 'products'
-                ? 'Search products by name, problem space, or technology stack...'
-                : 'Search discussions by title, author, or keyword...'
+              activeTab === 'projects'
+                ? 'Search public projects by title, tagline, architecture, or category...'
+                : 'Search community discussions by title, author, or keyword...'
             }
             aria-label="Search discovery catalog"
-            className="w-full pl-10 pr-9 py-2.5 rounded-xl text-sm border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 shadow-xs transition-all"
+            className="w-full pl-10 pr-9 py-2.5 rounded-xl text-xs sm:text-sm border border-[var(--border-default)] bg-[var(--surface)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 shadow-xs transition-all"
           />
           {searchQuery && (
             <button
@@ -228,49 +234,19 @@ export const ExplorePage: React.FC = () => {
           )}
         </div>
 
-        {/* Category Pills Filter */}
+        {/* Category Filter Pills */}
         <CategoryFilter
           selectedCategory={selectedCategory}
           onSelectCategory={(cat) => setSelectedCategory(cat)}
         />
-
-        {/* Popular Topic Tags */}
-        {allTags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1 mr-1">
-              <Tag className="w-3 h-3 text-indigo-500" /> Tags:
-            </span>
-            {selectedTag && (
-              <button
-                onClick={() => setSelectedTag(null)}
-                className="text-[11px] px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900 font-medium cursor-pointer"
-              >
-                Clear #{selectedTag} ✕
-              </button>
-            )}
-            {allTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
-                className={`text-[11px] px-2.5 py-0.5 rounded-md border transition-colors cursor-pointer ${
-                  selectedTag === tag
-                    ? 'bg-indigo-600 text-white border-indigo-600 font-semibold'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-[var(--text-primary)] hover:border-slate-300 dark:hover:border-slate-700'
-                }`}
-              >
-                #{tag}
-              </button>
-            ))}
-          </div>
-        )}
 
         {/* Active Filters Summary */}
         {(searchQuery || selectedCategory !== 'All' || selectedTag) && (
           <div className="flex items-center justify-between text-xs text-[var(--text-muted)] px-1 pt-1">
             <span>
               Showing{' '}
-              {activeTab === 'products' ? filteredProducts.length : filteredDiscussions.length}{' '}
-              {activeTab === 'products' ? 'products' : 'discussions'}
+              {activeTab === 'projects' ? sortedProjects.length : filteredDiscussions.length}{' '}
+              {activeTab === 'projects' ? 'public projects' : 'discussions'}
               {selectedCategory !== 'All' && ` in ${selectedCategory}`}
               {searchQuery && ` matching "${searchQuery}"`}
               {selectedTag && ` tagged #${selectedTag}`}
@@ -281,7 +257,7 @@ export const ExplorePage: React.FC = () => {
                 setSelectedCategory('All');
                 setSelectedTag(null);
               }}
-              className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
+              className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
             >
               Reset all filters
             </button>
@@ -291,29 +267,39 @@ export const ExplorePage: React.FC = () => {
 
       {/* Main Content Catalog */}
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div
               key={i}
-              className="h-48 rounded-2xl bg-[var(--border-subtle)] animate-pulse"
+              className="h-56 rounded-2xl border border-[var(--border-default)] bg-[var(--surface)] animate-pulse"
             />
           ))}
         </div>
-      ) : activeTab === 'products' ? (
-        filteredProducts.length > 0 ? (
+      ) : activeTab === 'projects' ? (
+        sortedProjects.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-            {filteredProducts.map((product) => (
-              <ProductCard key={product.id} product={product} />
+            {sortedProjects.map((project) => (
+              <PublicProjectCard
+                key={project.id}
+                project={project}
+                onUpvoteChange={handleUpvoteChange}
+              />
             ))}
           </div>
         ) : (
           <EmptyState
             title={
               searchQuery
-                ? `No products found matching "${searchQuery}"`
-                : `No products in category "${selectedCategory}"`
+                ? `No public projects found matching "${searchQuery}"`
+                : selectedCategory !== 'All'
+                ? `No public projects published in "${selectedCategory}"`
+                : 'No projects published yet'
             }
-            description="Try modifying your keyword query or browse across all product categories."
+            description={
+              searchQuery || selectedCategory !== 'All'
+                ? 'Try modifying your keyword query or browse across all project categories.'
+                : 'Be the first developer to publish a project and receive community and AI review scrutiny.'
+            }
             actionText="Reset Search"
             onAction={() => {
               setSearchQuery('');

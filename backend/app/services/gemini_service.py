@@ -1173,15 +1173,25 @@ def get_ai_provider() -> LLMProvider:
     provider_name = (settings.ai_provider or "auto").lower().strip()
     if provider_name == "mock":
         return MockGeminiProvider()
+    elif provider_name == "openrouter":
+        from backend.app.services.openrouter_service import OpenRouterProvider
+        return OpenRouterProvider()
     elif provider_name == "groq":
         from backend.app.services.groq_service import GroqProvider
         return GroqProvider()
     elif provider_name == "gemini":
         return GeminiProvider()
 
-    # "auto" or default: use Hybrid provider (Gemini primary with Groq fallback)
+    # "auto" or default: use cascading Hybrid provider
+    # Primary: Gemini -> Secondary: OpenRouter (free tier) -> Tertiary: Groq
     from backend.app.services.groq_service import GroqProvider
+    from backend.app.services.openrouter_service import OpenRouterProvider
+
+    secondary_cascade = HybridAIProvider(
+        primary=OpenRouterProvider(),
+        fallback=GroqProvider(),
+    )
     return HybridAIProvider(
         primary=GeminiProvider(),
-        fallback=GroqProvider(),
+        fallback=secondary_cascade,
     )

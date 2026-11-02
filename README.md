@@ -274,3 +274,29 @@ Product Research Intelligence enables users to convert unstructured community fe
    ```
 3. Deploy and verify asset delivery. Ensure no secrets are present in client bundle (`dist/assets/*.js`).
 
+---
+
+## 9. Future Reference Usage Guidelines & Research Protocols
+
+The project maintains a dedicated local reference repository library in [`references/`](references/README.md) containing verified open-source implementations of product discovery directories, feedback portals, roadmaps, changelogs, and developer profiles.
+
+Whenever a future task concerns **product discovery, launch workflows, feedback management, developer profiles, roadmaps, changelogs, responsive UI, or related architecture**, all team members and autonomous agents must follow this 8-step research protocol:
+
+1. **Consult the Relevant Repository**: Locate the corresponding project in `references/repositories/`:
+   - *Product Hunt-style launches & voting*: `references/repositories/Open-Launch`
+   - *Feedback boards, public roadmaps & changelogs*: `references/repositories/Quackback`
+   - *Clean suggestion workflows, idea states & quotas*: `references/repositories/Fider`
+   - *Developer identity, credentials & spotlight*: `references/repositories/Peerlist-Clone`
+   - *GraphQL v2 schema, cursors & OAuth PKCE*: `references/repositories/Product-Hunt-API`
+2. **Inspect Actual Implementation Files**: Read source controllers, schemas, components, and route definitions directly. Never guess or rely on superficial impressions.
+3. **Trace the Feature End-to-End**: Follow data flow from the client trigger (button/form) across the network API/RPC layer down to database mutations and background jobs.
+4. **Understand Dependencies and Data Flow**: Identify what libraries, ORMs, state management tools, and event buses support the feature.
+5. **Compare with Our Architecture**: Evaluate how the pattern maps to our decoupled FastAPI (Python 3.11) + React 19 (Vite) + PostgreSQL/SQLite stack.
+6. **Extract Patterns Without Blindly Copying**: Formulate clean-room implementations using our own design system and domain models.
+7. **Verify Intellectual Property & Licensing Compliance**: Check [`references/LICENSE_REVIEW.md`](references/LICENSE_REVIEW.md) before adapting any architectural structure. Strictly observe that `Quackback` and `Fider` are GNU AGPL-3.0, `Open-Launch` has viral badge/link requirements, and `Peerlist-Clone` is unlicensed (All Rights Reserved).
+8. **Recommend Changes That Solve Real Problems**: Recommend architectural adjustments only when they solve a verified user requirement, performance bottleneck, or technical gap.
+
+> [!IMPORTANT]
+> **Strict Research-Only Policy**: Treat all repositories in `references/repositories/` strictly as research references and reverse-engineering models, not as copy-paste implementation sources or vendor dependencies.
+
+

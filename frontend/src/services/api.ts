@@ -20,6 +20,21 @@ import type {
   ProductReview,
   ReviewSourceAvailability,
   GenerateReviewRequest,
+  Project,
+  ProjectCreatePayload,
+  ProjectUpdatePayload,
+  FeedbackFinding,
+  FeedbackReport,
+  AIReviewStatus,
+  AIReviewStartPayload,
+  FeedbackReportComparison,
+  ReportExportResponse,
+  PublicProject,
+  PublicUpvoteResponse,
+  CreatorProfile,
+  CreatorProfileUpdatePayload,
+  CreatorStudioOverview,
+  PublicCreatorProfile,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
@@ -848,6 +863,350 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Failed to send message' }));
       throw new Error(err.detail || 'Failed to send message');
+    }
+    return res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // Project Management & Intake (Phase 2 & 4)
+  // ---------------------------------------------------------------------------
+  async createProject(payload: ProjectCreatePayload): Promise<Project> {
+    const res = await fetch(`${API_BASE}/projects`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to create project' }));
+      throw new Error(err.detail || 'Failed to create project');
+    }
+    return res.json();
+  },
+
+  async getPersonalProjects(params?: {
+    status?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Project[]> {
+    const query = new URLSearchParams();
+    if (params?.status && params.status !== 'all') query.set('status', params.status);
+    if (params?.category && params.category !== 'all') query.set('category', params.category);
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+
+    const res = await fetch(`${API_BASE}/projects/personal?${query.toString()}`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to fetch personal projects' }));
+      throw new Error(err.detail || 'Failed to fetch personal projects');
+    }
+    return res.json();
+  },
+
+  async getPublicProjects(params?: {
+    category?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<PublicProject[]> {
+    const query = new URLSearchParams();
+    if (params?.category && params.category !== 'all') query.set('category', params.category);
+    if (params?.search) query.set('search', params.search);
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+
+    const res = await fetch(`${API_BASE}/projects/public?${query.toString()}`, {
+      headers: getHeaders(false),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to fetch public projects' }));
+      throw new Error(err.detail || 'Failed to fetch public projects');
+    }
+    return res.json();
+  },
+
+  async getPublicProject(projectId: string): Promise<PublicProject> {
+    const res = await fetch(`${API_BASE}/projects/public/${projectId}`, {
+      headers: getHeaders(false),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Public project not found' }));
+      throw new Error(err.detail || 'Public project not found');
+    }
+    return res.json();
+  },
+
+  async getPublicFeedbackReport(projectId: string): Promise<FeedbackReport | null> {
+    const res = await fetch(`${API_BASE}/projects/public/${projectId}/report`, {
+      headers: getHeaders(false),
+    });
+    if (!res.ok) {
+      if (res.status === 404) return null;
+      const err = await res.json().catch(() => ({ detail: 'Public feedback report not found' }));
+      throw new Error(err.detail || 'Public feedback report not found');
+    }
+    return res.json();
+  },
+
+  async upvotePublicProject(projectId: string): Promise<PublicUpvoteResponse> {
+    const res = await fetch(`${API_BASE}/projects/public/${projectId}/upvote`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to upvote project' }));
+      throw new Error(err.detail || 'Failed to upvote project');
+    }
+    return res.json();
+  },
+
+  async getProject(projectId: string): Promise<Project> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Project not found' }));
+      throw new Error(err.detail || 'Project not found');
+    }
+    return res.json();
+  },
+
+  async updateProject(projectId: string, updates: ProjectUpdatePayload): Promise<Project> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update project' }));
+      throw new Error(err.detail || 'Failed to update project');
+    }
+    return res.json();
+  },
+
+  async deleteProject(projectId: string): Promise<boolean> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}`, {
+      method: 'DELETE',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to delete project' }));
+      throw new Error(err.detail || 'Failed to delete project');
+    }
+    const data = await res.json().catch(() => ({ success: true }));
+    return data.success ?? true;
+  },
+
+  async updateFindingStatus(
+    findingId: string,
+    status: 'open' | 'in_progress' | 'addressed'
+  ): Promise<FeedbackFinding> {
+    const res = await fetch(`${API_BASE}/findings/${findingId}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update finding status' }));
+      throw new Error(err.detail || 'Failed to update finding status');
+    }
+    return res.json();
+  },
+
+  async startAIReview(
+    projectId: string,
+    payload?: AIReviewStartPayload
+  ): Promise<AIReviewStatus> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/review/start`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to start AI review' }));
+      throw new Error(err.detail || 'Failed to start AI review');
+    }
+    return res.json();
+  },
+
+  async getAIReviewStatus(
+    projectId: string,
+    reviewId: string
+  ): Promise<AIReviewStatus> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/reviews/${reviewId}/status`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to fetch review status' }));
+      throw new Error(err.detail || 'Failed to fetch review status');
+    }
+    return res.json();
+  },
+
+  async getProjectFeedbackReport(
+    projectId: string
+  ): Promise<FeedbackReport | null> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/report`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      if (res.status === 404) return null;
+      const err = await res.json().catch(() => ({ detail: 'Failed to fetch feedback report' }));
+      throw new Error(err.detail || 'Failed to fetch feedback report');
+    }
+    return res.json();
+  },
+
+  async getProjectReviews(
+    projectId: string
+  ): Promise<AIReviewStatus[]> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/reviews`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to fetch project reviews' }));
+      throw new Error(err.detail || 'Failed to fetch project reviews');
+    }
+    return res.json();
+  },
+
+  async getProjectReports(
+    projectId: string
+  ): Promise<FeedbackReport[]> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/reports`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to fetch project reports' }));
+      throw new Error(err.detail || 'Failed to fetch project reports');
+    }
+    return res.json();
+  },
+
+  async getProjectReportById(
+    projectId: string,
+    reportId: string
+  ): Promise<FeedbackReport> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/reports/${reportId}`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to fetch feedback report' }));
+      throw new Error(err.detail || 'Failed to fetch feedback report');
+    }
+    return res.json();
+  },
+
+  async getReportByReviewId(
+    projectId: string,
+    reviewId: string
+  ): Promise<FeedbackReport | null> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/reviews/${reviewId}/report`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      if (res.status === 404) return null;
+      const err = await res.json().catch(() => ({ detail: 'Failed to fetch report for review' }));
+      throw new Error(err.detail || 'Failed to fetch report for review');
+    }
+    return res.json();
+  },
+
+  async exportFeedbackReport(
+    projectId: string,
+    reportId?: string
+  ): Promise<ReportExportResponse> {
+    const query = reportId ? `?report_id=${encodeURIComponent(reportId)}` : '';
+    const res = await fetch(`${API_BASE}/projects/${projectId}/report/export${query}`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to export feedback report' }));
+      throw new Error(err.detail || 'Failed to export feedback report');
+    }
+    return res.json();
+  },
+
+  async compareFeedbackReports(
+    projectId: string,
+    baseId: string,
+    targetId: string
+  ): Promise<FeedbackReportComparison> {
+    const res = await fetch(
+      `${API_BASE}/projects/${projectId}/reports/compare?base_id=${encodeURIComponent(baseId)}&target_id=${encodeURIComponent(targetId)}`,
+      {
+        headers: getHeaders(true),
+      }
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to compare feedback reports' }));
+      throw new Error(err.detail || 'Failed to compare feedback reports');
+    }
+    return res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // Creator Space (Phase 9)
+  // ---------------------------------------------------------------------------
+  async getCreatorStudio(): Promise<CreatorStudioOverview> {
+    const res = await fetch(`${API_BASE}/creator/studio`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to fetch creator studio' }));
+      throw new Error(err.detail || 'Failed to fetch creator studio');
+    }
+    return res.json();
+  },
+
+  async updateCreatorProfile(
+    payload: CreatorProfileUpdatePayload
+  ): Promise<CreatorProfile> {
+    const res = await fetch(`${API_BASE}/creator/profile`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update creator profile' }));
+      throw new Error(err.detail || 'Failed to update creator profile');
+    }
+    return res.json();
+  },
+
+  async publishCreatorProject(projectId: string): Promise<{ id: string; isPublic: boolean }> {
+    const res = await fetch(`${API_BASE}/creator/projects/${projectId}/publish`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to publish project' }));
+      throw new Error(err.detail || 'Failed to publish project');
+    }
+    return res.json();
+  },
+
+  async unpublishCreatorProject(projectId: string): Promise<{ id: string; isPublic: boolean }> {
+    const res = await fetch(`${API_BASE}/creator/projects/${projectId}/unpublish`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to unpublish project' }));
+      throw new Error(err.detail || 'Failed to unpublish project');
+    }
+    return res.json();
+  },
+
+  async getPublicCreatorProfile(usernameOrId: string): Promise<PublicCreatorProfile> {
+    const res = await fetch(`${API_BASE}/creators/${encodeURIComponent(usernameOrId)}`, {
+      headers: getHeaders(false),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Creator profile not found' }));
+      throw new Error(err.detail || 'Creator profile not found');
     }
     return res.json();
   },

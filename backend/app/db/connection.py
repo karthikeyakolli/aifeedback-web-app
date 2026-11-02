@@ -339,6 +339,103 @@ class DatabaseManager:
                 FOREIGN KEY (owner_id) REFERENCES profiles(id) ON DELETE CASCADE
             );
 
+            -- Projects Table (Phase 0 & 2 Foundation)
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                tagline TEXT NOT NULL,
+                description TEXT NOT NULL,
+                category TEXT NOT NULL,
+                repository_url TEXT,
+                demo_url TEXT,
+                status TEXT NOT NULL DEFAULT 'draft',
+                is_public INTEGER NOT NULL DEFAULT 0,
+                upvotes_count INTEGER NOT NULL DEFAULT 0,
+                reviews_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+            );
+
+            -- Project Attachments
+            CREATE TABLE IF NOT EXISTS project_attachments (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                owner_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                mime_type TEXT NOT NULL,
+                storage_path TEXT NOT NULL,
+                content_excerpt TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (owner_id) REFERENCES profiles(id) ON DELETE CASCADE
+            );
+
+            -- AI Reviews
+            CREATE TABLE IF NOT EXISTS ai_reviews (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'queued',
+                error_message TEXT,
+                execution_duration_ms INTEGER,
+                input_token_count INTEGER,
+                output_token_count INTEGER,
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+            );
+
+            -- Feedback Reports
+            CREATE TABLE IF NOT EXISTS feedback_reports (
+                id TEXT PRIMARY KEY,
+                review_id TEXT NOT NULL UNIQUE,
+                project_id TEXT NOT NULL,
+                executive_summary TEXT NOT NULL,
+                strengths_summary TEXT NOT NULL,
+                total_findings_count INTEGER NOT NULL DEFAULT 0,
+                blockers_count INTEGER NOT NULL DEFAULT 0,
+                high_count INTEGER NOT NULL DEFAULT 0,
+                medium_count INTEGER NOT NULL DEFAULT 0,
+                low_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (review_id) REFERENCES ai_reviews(id) ON DELETE CASCADE,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            -- Feedback Findings
+            CREATE TABLE IF NOT EXISTS feedback_findings (
+                id TEXT PRIMARY KEY,
+                report_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                category TEXT NOT NULL,
+                observation TEXT NOT NULL,
+                evidence_quote TEXT NOT NULL,
+                recommendation TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                resolved_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (report_id) REFERENCES feedback_reports(id) ON DELETE CASCADE,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            -- Project Upvotes (Phase 8 Public Space Community Scrutiny)
+            CREATE TABLE IF NOT EXISTS project_upvotes (
+                project_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (project_id, user_id),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
             -- Query Performance Indexes
             CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status, created_at);
             CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category);
@@ -358,6 +455,10 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_post_documents_post ON post_documents(post_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_product_reviews_post_ver ON product_reviews(post_id, version DESC);
             CREATE INDEX IF NOT EXISTS idx_product_reviews_owner ON product_reviews(owner_id, post_id);
+            CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_projects_public ON projects(category, created_at DESC) WHERE is_public = 1;
+            CREATE INDEX IF NOT EXISTS idx_feedback_findings_rep ON feedback_findings(report_id, severity);
+            CREATE INDEX IF NOT EXISTS idx_feedback_findings_proj ON feedback_findings(project_id, status);
             """)
 
             # Upgrade conversation_sessions review_id column if not present
@@ -419,6 +520,15 @@ class DatabaseManager:
             doc_cols = [r[1] for r in cur.execute("PRAGMA table_info(post_documents)").fetchall()]
             if "is_synthetic" not in doc_cols:
                 conn.execute("ALTER TABLE post_documents ADD COLUMN is_synthetic INTEGER DEFAULT 0;")
+
+            # Upgrade creator profile fields if not present
+            profile_cols = [r[1] for r in cur.execute("PRAGMA table_info(profiles)").fetchall()]
+            if "github_url" not in profile_cols:
+                conn.execute("ALTER TABLE profiles ADD COLUMN github_url TEXT;")
+            if "website_url" not in profile_cols:
+                conn.execute("ALTER TABLE profiles ADD COLUMN website_url TEXT;")
+            if "skills" not in profile_cols:
+                conn.execute("ALTER TABLE profiles ADD COLUMN skills TEXT DEFAULT '[]';")
 
 
 # Global db manager instance

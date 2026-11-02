@@ -652,10 +652,241 @@ export interface GenerateReviewRequest {
   includedDocIds?: string[] | null;
 }
 
+// -----------------------------------------------------------------------------
+// Phase 2, 3 & 4 Project Foundation Types
+// -----------------------------------------------------------------------------
+export type ProjectStatus = 'draft' | 'ready' | 'in_review' | 'reviewed' | 'archived';
 
+export type ProjectCategory =
+  | 'developer-tools'
+  | 'productivity'
+  | 'ai-ml'
+  | 'design-ux'
+  | 'saas-b2b'
+  | 'mobile'
+  | 'infrastructure';
 
+export interface Project {
+  id: string;
+  userId: string;
+  name: string;
+  tagline: string;
+  description: string;
+  category: ProjectCategory;
+  repositoryUrl?: string | null;
+  demoUrl?: string | null;
+  status: ProjectStatus;
+  isPublic: boolean;
+  upvotesCount: number;
+  reviewsCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
 
+export interface ProjectCreatePayload {
+  name: string;
+  tagline: string;
+  category: ProjectCategory;
+  description?: string;
+  repositoryUrl?: string | null;
+  demoUrl?: string | null;
+}
 
+export interface ProjectUpdatePayload {
+  name?: string;
+  tagline?: string;
+  description?: string;
+  category?: ProjectCategory;
+  repositoryUrl?: string | null;
+  demoUrl?: string | null;
+  status?: ProjectStatus;
+  isPublic?: boolean;
+}
+
+export interface FeedbackFinding {
+  id: string;
+  reportId: string;
+  projectId: string;
+  title: string;
+  severity: 'blocker' | 'high' | 'medium' | 'low';
+  category: 'ux' | 'performance' | 'security' | 'bug' | 'architecture' | 'accessibility';
+  observation: string;
+  evidenceQuote: string;
+  recommendation: string;
+  status: 'open' | 'in_progress' | 'addressed';
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface FeedbackReport {
+  id: string;
+  reviewId: string;
+  projectId: string;
+  executiveSummary: string;
+  strengthsSummary: string;
+  totalFindingsCount: number;
+  blockersCount: number;
+  highCount: number;
+  mediumCount: number;
+  lowCount: number;
+  findings: FeedbackFinding[];
+  createdAt: string;
+}
+
+export type ReviewLifecycleStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed';
+
+export interface AIReviewStatus {
+  id: string;
+  projectId: string;
+  userId: string;
+  status: ReviewLifecycleStatus;
+  provider: string;
+  modelId: string;
+  errorMessage?: string | null;
+  executionDurationMs?: number | null;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export interface AIReviewStartPayload {
+  focus_areas?: string[];
+  model_override?: string;
+}
+
+export interface FindingComparisonItem {
+  findingId: string;
+  title: string;
+  severity: 'blocker' | 'high' | 'medium' | 'low';
+  category: 'ux' | 'performance' | 'security' | 'bug' | 'architecture' | 'accessibility';
+  statusInBase?: 'open' | 'in_progress' | 'addressed' | null;
+  statusInTarget: 'open' | 'in_progress' | 'addressed';
+  changeType: 'new' | 'resolved' | 'reopened' | 'persisted';
+}
+
+export interface FeedbackReportComparison {
+  projectId: string;
+  baseReportId: string;
+  targetReportId: string;
+  totalFindingsDelta: number;
+  resolvedCount: number;
+  newCount: number;
+  persistedCount: number;
+  items: FindingComparisonItem[];
+}
+
+export interface ReportExportResponse {
+  projectId: string;
+  reportId: string;
+  format: string;
+  filename: string;
+  content: string;
+}
+
+export interface PublicProject {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+  category: ProjectCategory;
+  repositoryUrl?: string | null;
+  demoUrl?: string | null;
+  status: ProjectStatus;
+  isPublic: boolean;
+  upvotesCount: number;
+  reviewsCount: number;
+  creatorUsername?: string | null;
+  creatorDisplayName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicUpvoteResponse {
+  projectId: string;
+  upvotesCount: number;
+  hasUpvoted: boolean;
+}
+
+// =============================================================================
+// Phase 9: Creator Space Types
+// =============================================================================
+
+export interface CreatorProfile {
+  id: string;
+  username: string;
+  displayName: string;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  githubUrl?: string | null;
+  websiteUrl?: string | null;
+  skills: string[];
+  reputationScore: number;
+  joinedAt: string;
+}
+
+export interface CreatorProfileUpdatePayload {
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  githubUrl?: string;
+  websiteUrl?: string;
+  skills?: string[];
+}
+
+export interface LaunchReadiness {
+  hasAiReview: boolean;
+  hasRepoUrl: boolean;
+  hasDemoUrl: boolean;
+  openBlockersCount: number;
+  isLaunchReady: boolean;
+}
+
+export interface CreatorShowcaseProject {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+  category: ProjectCategory;
+  status: ProjectStatus;
+  isPublic: boolean;
+  repositoryUrl?: string | null;
+  demoUrl?: string | null;
+  upvotesCount: number;
+  reviewsCount: number;
+  readiness: LaunchReadiness;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatorStudioMetrics {
+  totalProjectsCount: number;
+  publishedProjectsCount: number;
+  privateProjectsCount: number;
+  totalUpvotesReceived: number;
+  totalReviewsCompleted: number;
+  totalOpenBlockers: number;
+}
+
+export interface CreatorStudioOverview {
+  profile: CreatorProfile;
+  metrics: CreatorStudioMetrics;
+  projects: CreatorShowcaseProject[];
+}
+
+export interface PublicCreatorProfile {
+  username: string;
+  displayName: string;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  githubUrl?: string | null;
+  websiteUrl?: string | null;
+  skills: string[];
+  reputationScore: number;
+  joinedAt: string;
+  totalPublishedProjects: number;
+  totalUpvotesReceived: number;
+  publishedProjects: PublicProject[];
+}
 
 
 

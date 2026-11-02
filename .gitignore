@@ -66,6 +66,12 @@ Thumbs.db
 models/
 artifacts/
 
-# Local Reference Code Library (Study-only, not part of application bundle)
-references/
+# Local Reference Code Library (Source clones ignored, documentation and indexes tracked)
+references/repositories/
+references/customer-feedback-analyzer-genai/
+references/feedback-intelligence-agent/
+references/react-fastapi-starter/
+references/reddit-clone/
+references/rereflect/
+references/signalloop/
 

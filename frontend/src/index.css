@@ -3,72 +3,116 @@
 @layer base {
   :root {
     color-scheme: light;
-    --bg-app: #f7f8fc;
-    --bg-surface: #ffffff;
-    --bg-secondary: #f1f3f9;
+    /* Semantic Design Tokens (Spec 10_VISUAL_DESIGN_SYSTEM.md) */
+    --canvas: #f7f8fc;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-hover: #f1f3f9;
+    --border-default: #e6e8ef;
+    --border-strong: #cbd2e0;
     --text-primary: #172033;
+    --text-secondary: #475467;
     --text-muted: #667085;
-    --border-subtle: #e6e8ef;
-    --border-color: #e6e8ef;
-    --primary: #4f46e5;
-    --primary-hover: #4338ca;
-    --primary-subtle: rgba(79, 70, 229, 0.08);
-    --primary-foreground: #ffffff;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --accent-subtle: rgba(79, 70, 229, 0.08);
+    --accent-foreground: #ffffff;
+    --focus-ring: #4f46e5;
+    --status-success: #059669;
+    --status-warning: #d97706;
+    --status-danger: #e11d48;
+    --status-info: #2563eb;
+    --overlay: rgba(15, 23, 42, 0.45);
+
+    /* Radii */
+    --radius-sm: 8px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+    --radius-full: 9999px;
+
+    /* Motion Tokens (Spec 09_MOTION_HOVER_AND_INTERACTION.md) */
+    --motion-instant: 80ms;
+    --motion-fast: 140ms;
+    --motion-standard: 200ms;
+    --motion-panel: 240ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+    /* Legacy mapping for backward-compatibility */
+    --bg-app: var(--canvas);
+    --bg-surface: var(--surface);
+    --bg-secondary: var(--surface-hover);
+    --border-subtle: var(--border-default);
+    --border-color: var(--border-default);
+    --primary: var(--accent);
+    --primary-hover: var(--accent-hover);
+    --primary-subtle: var(--accent-subtle);
+    --primary-foreground: var(--accent-foreground);
     --evidence-community: #0f766e;
     --evidence-document: #2563eb;
     --ai-synthesis: #7c3aed;
     --card-shadow: 0 1px 3px rgba(23, 32, 51, 0.05), 0 1px 2px rgba(23, 32, 51, 0.03);
     --card-shadow-hover: 0 4px 14px rgba(23, 32, 51, 0.08);
-    --focus-ring: #4f46e5;
 
     /* Neomorphic / Soft-tactile surface tokens */
     --neomorph-shadow: 3px 3px 10px rgba(23, 32, 51, 0.05), -3px -3px 10px rgba(255, 255, 255, 0.95);
     --neomorph-shadow-hover: 5px 5px 15px rgba(23, 32, 51, 0.08), -5px -5px 15px rgba(255, 255, 255, 1);
     --neomorph-inset: inset 2px 2px 4px rgba(23, 32, 51, 0.06), inset -2px -2px 4px rgba(255, 255, 255, 0.9);
 
-    /* Legacy mapping for backward-compatibility */
     --bg-primary: var(--bg-surface);
     --bg-tertiary: var(--bg-secondary);
     --bg-card: var(--bg-surface);
-    --text-secondary: var(--text-muted);
-    --accent: var(--primary);
-    --accent-hover: var(--primary-hover);
-    --accent-subtle: var(--primary-subtle);
   }
 
   .dark {
     color-scheme: dark;
-    --bg-app: #0d1321;
-    --bg-surface: #151d2e;
-    --bg-secondary: #1b2638;
-    --text-primary: #eef2ff;
-    --text-muted: #a6b0c3;
-    --border-subtle: #293449;
-    --border-color: #293449;
-    --primary: #818cf8;
-    --primary-hover: #6366f1;
-    --primary-subtle: rgba(129, 140, 248, 0.15);
-    --primary-foreground: #0d1321;
+    /* Semantic Design Tokens (Spec 10_VISUAL_DESIGN_SYSTEM.md) */
+    --canvas: #090d16;
+    --surface: #111726;
+    --surface-raised: #182033;
+    --surface-hover: #1f2a42;
+    --border-default: #242f47;
+    --border-strong: #334161;
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --accent-subtle: rgba(99, 102, 241, 0.15);
+    --accent-foreground: #ffffff;
+    --focus-ring: #818cf8;
+    --status-success: #10b981;
+    --status-warning: #f59e0b;
+    --status-danger: #f43f5e;
+    --status-info: #38bdf8;
+    --overlay: rgba(0, 0, 0, 0.7);
+
+    /* Legacy mapping for backward-compatibility */
+    --bg-app: var(--canvas);
+    --bg-surface: var(--surface);
+    --bg-secondary: var(--surface-hover);
+    --border-subtle: var(--border-default);
+    --border-color: var(--border-default);
+    --primary: var(--accent);
+    --primary-hover: var(--accent-hover);
+    --primary-subtle: var(--accent-subtle);
+    --primary-foreground: var(--accent-foreground);
     --evidence-community: #2dd4bf;
     --evidence-document: #60a5fa;
     --ai-synthesis: #a78bfa;
     --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
     --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.45);
-    --focus-ring: #818cf8;
 
     /* Neomorphic / Soft-tactile surface tokens */
     --neomorph-shadow: 3px 3px 12px rgba(0, 0, 0, 0.4), -2px -2px 8px rgba(35, 48, 74, 0.3);
     --neomorph-shadow-hover: 5px 5px 18px rgba(0, 0, 0, 0.55), -3px -3px 12px rgba(35, 48, 74, 0.4);
     --neomorph-inset: inset 2px 2px 4px rgba(0, 0, 0, 0.5), inset -2px -2px 4px rgba(35, 48, 74, 0.25);
 
-    /* Legacy mapping for backward-compatibility */
     --bg-primary: var(--bg-surface);
     --bg-tertiary: var(--bg-secondary);
     --bg-card: var(--bg-surface);
-    --text-secondary: var(--text-muted);
-    --accent: var(--primary);
-    --accent-hover: var(--primary-hover);
-    --accent-subtle: var(--primary-subtle);
   }
 
   body {

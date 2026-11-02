@@ -112,12 +112,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       if (isSupabaseConfigured() && supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw new Error(error.message);
-        if (data.session) {
-          setStoredToken(data.session.access_token);
-          const u = await api.getCurrentUser();
-          setUser(u);
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          if (data.session) {
+            setStoredToken(data.session.access_token);
+            const u = await api.getCurrentUser();
+            setUser(u);
+            closeAuthModal();
+            return;
+          }
+        } catch {
+          // Fallback to local FastAPI backend auth if Supabase credentials fail
+          const res = await api.login({ email, password });
+          setUser(res.user);
+          closeAuthModal();
+          return;
         }
       } else {
         const res = await api.login({ email, password });

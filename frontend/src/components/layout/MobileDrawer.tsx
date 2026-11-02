@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   X,
   Sparkles,
-  Layers,
   Compass,
   Bookmark,
   Activity,
@@ -11,10 +10,17 @@ import {
   Settings,
   Plus,
   LogOut,
+  FolderKanban,
+  Home,
+  Layers,
+  Palette,
   Terminal,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useSpace, SPACES } from '../../context/SpaceContext';
 import { ThemeSwitcher } from '../common/ThemeSwitcher';
+import { SpaceSwitcher } from './SpaceSwitcher';
+import { cn } from '../../lib/utils';
 
 interface MobileDrawerProps {
   isOpen: boolean;
@@ -24,11 +30,12 @@ interface MobileDrawerProps {
 export const MobileDrawer: React.FC<MobileDrawerProps> = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
+  const { currentSpace } = useSpace();
 
   // Close on route change
   useEffect(() => {
     onClose();
-  }, [location.pathname]);
+  }, [location.pathname, onClose]);
 
   // Close on Escape key
   useEffect(() => {
@@ -45,23 +52,38 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({ isOpen, onClose }) =
         document.body.style.overflow = '';
       };
     }
-  }, [isOpen]);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const navItems = [
-    { to: '/', label: 'Discussion Feed', icon: <Layers className="w-5 h-5 text-indigo-500" /> },
-    { to: '/explore', label: 'Explore Products & Feed', icon: <Compass className="w-5 h-5 text-blue-500" /> },
-    { to: '/saved', label: 'Saved Bookmarks', icon: <Bookmark className="w-5 h-5 text-amber-500" /> },
-    { to: '/activity', label: 'My Activity & Studio', icon: <Activity className="w-5 h-5 text-emerald-500" /> },
-    ...(user?.isModerator
-      ? [{ to: '/moderation', label: 'Moderation Queue', icon: <Shield className="w-5 h-5 text-rose-500" /> }]
-      : []),
-    ...(import.meta.env.DEV
-      ? [{ to: '/developer', label: 'Developer Workspace', icon: <Terminal className="w-5 h-5 text-amber-500" /> }]
-      : []),
-    { to: '/settings', label: 'Settings', icon: <Settings className="w-5 h-5 text-slate-400" /> },
-  ];
+  const getSpaceNavItems = () => {
+    switch (currentSpace) {
+      case 'personal':
+        return [
+          { to: '/personal', label: 'My Projects', icon: FolderKanban },
+          { to: '/personal/projects/new', label: 'New Project', icon: Plus },
+          { to: '/activity', label: 'Feedback Activity', icon: Activity },
+          { to: '/saved', label: 'Saved Items', icon: Bookmark },
+        ];
+      case 'creator':
+        return [
+          { to: '/creator', label: 'Creator Studio', icon: Palette },
+          { to: '/developer', label: 'AI Review Lab', icon: Terminal },
+          { to: '/creator/profile', label: 'Public Showcase', icon: Sparkles },
+          { to: '/saved', label: 'Saved Assets', icon: Bookmark },
+        ];
+      case 'public':
+      default:
+        return [
+          { to: '/', label: 'Overview', icon: Home },
+          { to: '/explore', label: 'Explore Projects', icon: Compass },
+          { to: '/discussions', label: 'Community Feed', icon: Layers },
+          { to: '/saved', label: 'Saved Bookmarks', icon: Bookmark },
+        ];
+    }
+  };
+
+  const navItems = getSpaceNavItems();
 
   return (
     <div
@@ -78,85 +100,99 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({ isOpen, onClose }) =
       />
 
       {/* Drawer Panel */}
-      <div className="relative w-4/5 max-w-xs h-full bg-[var(--bg-surface)] text-[var(--text-primary)] border-r border-[var(--border-subtle)] shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-250">
+      <div className="relative w-4/5 max-w-xs h-full bg-[var(--surface)] text-[var(--text-primary)] border-r border-[var(--border-default)] shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-250">
         {/* Drawer Header */}
-        <div className="h-16 flex items-center justify-between px-5 border-b border-[var(--border-subtle)]">
+        <div className="h-16 flex items-center justify-between px-5 border-b border-[var(--border-default)]">
           <Link to="/" onClick={onClose} className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white shadow-xs">
               <Sparkles className="w-4 h-4" />
             </div>
-            <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-white">
-              ResearchIntel
+            <span className="font-extrabold text-base tracking-tight text-[var(--text-primary)]">
+              FeedbackAI
             </span>
           </Link>
+
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close navigation"
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-[var(--bg-secondary)] min-h-[44px] min-w-[44px] flex items-center justify-center"
+            aria-label="Close menu"
+            className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Action button */}
-        <div className="p-4 border-b border-[var(--border-subtle)]">
-          <Link
-            to="/create"
-            onClick={onClose}
-            className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-xs transition-colors min-h-[44px]"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Discussion</span>
-          </Link>
+        {/* Space Switcher */}
+        <div className="p-4 border-b border-[var(--border-default)] bg-[var(--canvas)]">
+          <SpaceSwitcher />
         </div>
 
-        {/* Nav Links */}
-        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+        {/* Space Nav Items */}
+        <div className="flex-1 px-4 py-3 space-y-1 overflow-y-auto">
+          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            {SPACES[currentSpace].label} Navigation
+          </div>
           {navItems.map((item) => {
             const isActive = location.pathname === item.to;
+            const ItemIcon = item.icon;
             return (
               <Link
                 key={item.to}
                 to={item.to}
                 onClick={onClose}
-                className={`flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all min-h-[44px] ${
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
-                }`}
+                    ? 'bg-[var(--accent)]/10 text-[var(--accent)] font-semibold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]'
+                )}
               >
-                {item.icon}
+                <ItemIcon className="w-4 h-4 shrink-0" />
                 <span>{item.label}</span>
               </Link>
             );
           })}
-        </nav>
 
-        {/* User Account & Theme */}
-        <div className="p-4 border-t border-[var(--border-subtle)] space-y-3 bg-[var(--bg-secondary)]/50">
+          <div className="pt-4 border-t border-[var(--border-default)] mt-4">
+            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              Preferences & Account
+            </div>
+            <Link
+              to="/settings"
+              onClick={onClose}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+            >
+              <Settings className="w-4 h-4 shrink-0" />
+              <span>Settings</span>
+            </Link>
+            {user?.isModerator && (
+              <Link
+                to="/moderation"
+                onClick={onClose}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-rose-600 hover:bg-rose-500/10 transition-colors"
+              >
+                <Shield className="w-4 h-4 shrink-0" />
+                <span>Moderation Queue</span>
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {/* Drawer Footer */}
+        <div className="p-4 border-t border-[var(--border-default)] bg-[var(--surface)] space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[var(--text-muted)]">Theme Mode</span>
+            <span className="text-xs text-[var(--text-muted)] font-medium">Theme</span>
             <ThemeSwitcher variant="dropdown" />
           </div>
 
           {isAuthenticated && user ? (
-            <div className="flex items-center justify-between p-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-              <div className="flex items-center gap-2.5 truncate">
-                {user.avatarUrl ? (
-                  <img
-                    src={user.avatarUrl}
-                    alt={user.displayName}
-                    className="w-8 h-8 rounded-full object-cover shrink-0"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0">
-                    {user.displayName?.charAt(0) || 'U'}
-                  </div>
-                )}
+            <div className="flex items-center justify-between pt-2 border-t border-[var(--border-default)]">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center font-bold text-xs shrink-0">
+                  {user.displayName?.charAt(0) || 'U'}
+                </div>
                 <div className="truncate text-xs">
-                  <div className="font-semibold truncate text-[var(--text-primary)]">{user.displayName}</div>
-                  <div className="text-[10px] text-[var(--text-muted)] truncate font-mono">@{user.username}</div>
+                  <p className="font-semibold truncate text-[var(--text-primary)]">{user.displayName}</p>
                 </div>
               </div>
               <button
@@ -165,30 +201,20 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({ isOpen, onClose }) =
                   logout();
                   onClose();
                 }}
-                title="Sign Out"
-                aria-label="Sign Out"
-                className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Sign out"
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              <Link
-                to="/login"
-                onClick={onClose}
-                className="flex items-center justify-center w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition-colors min-h-[44px]"
-              >
-                Sign In
-              </Link>
-              <Link
-                to="/signup"
-                onClick={onClose}
-                className="flex items-center justify-center w-full py-2.5 px-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] text-[var(--text-primary)] font-semibold text-xs transition-colors min-h-[44px]"
-              >
-                Create Account
-              </Link>
-            </div>
+            <Link
+              to="/login"
+              onClick={onClose}
+              className="flex items-center justify-center w-full py-2 px-3 rounded-xl bg-[var(--accent)] text-[var(--accent-foreground)] font-semibold text-xs shadow-xs"
+            >
+              Sign In
+            </Link>
           )}
         </div>
       </div>
