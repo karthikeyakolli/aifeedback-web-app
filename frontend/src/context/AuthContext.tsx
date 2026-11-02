@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import type { UserProfile } from '../types';
 import { api, getStoredToken, setStoredToken, clearStoredToken } from '../services/api';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { mockCurrentUser } from '../fixtures/mockData';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -213,7 +214,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(res.user);
         closeAuthModal();
       } catch (e: any) {
-        console.error('Demo login error:', e);
+        console.warn('Demo login network unavailable; using static demo profile:', e);
+        setUser(mockCurrentUser);
+        setStoredToken('demo_token_' + mockCurrentUser.id);
+        closeAuthModal();
       }
     } finally {
       setIsLoading(false);

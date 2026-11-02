@@ -4,24 +4,30 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
-  ],
-  resolve: {
-    alias: {
-      '@': path.resolve(import.meta.dirname, './src'),
-    },
-  },
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-        secure: false,
+export default defineConfig(({ mode }) => {
+  const isProd = mode === 'production';
+  const base = process.env.VITE_BASE_PATH || (isProd ? '/aifeedback-web-app/' : '/');
+
+  return {
+    base,
+    plugins: [
+      react(),
+      tailwindcss(),
+    ],
+    resolve: {
+      alias: {
+        '@': path.resolve(import.meta.dirname, './src'),
       },
     },
-  },
+    server: {
+      port: 5173,
+      proxy: {
+        '/api': {
+          target: 'http://127.0.0.1:8000',
+          changeOrigin: true,
+          secure: false,
+        },
+      },
+    },
+  };
 })

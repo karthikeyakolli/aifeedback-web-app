@@ -38,7 +38,7 @@ export function App() {
     <ThemeProvider>
       <AuthProvider>
         <AuthModal />
-        <BrowserRouter>
+        <BrowserRouter basename={import.meta.env.BASE_URL}>
           <SpaceProvider>
             <Routes>
               {/* Standalone Authentication Pages */}
