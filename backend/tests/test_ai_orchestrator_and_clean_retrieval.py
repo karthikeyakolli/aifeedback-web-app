@@ -186,3 +186,155 @@ def test_retrieval_service_produces_clean_evidence():
     assert isinstance(c["relevance_percentage"], int)
     assert "snippet" in c
     assert c["clean_author"] == "NetworkEngineer"
+
+
+def test_ai_orchestrator_token_usage_ledger_recording():
+    """Verify that AI review execution records actual token usage and cost in ai_usage_ledger."""
+    from backend.app.db.connection import db_manager
+    project_id = f"prj_{uuid.uuid4().hex[:8]}"
+    review_id = f"rev_{uuid.uuid4().hex[:8]}"
+    user_id = f"usr_{uuid.uuid4().hex[:8]}"
+
+    test_project = {
+        "id": project_id,
+        "name": "Distributed Stream Processor",
+        "tagline": "High-throughput stream processing with checkpointing and state reconciliation.",
+        "description": "Processes partitioned real-time event logs with Raft consensus and rocksdb persistence.",
+        "category": "infrastructure",
+        "userId": user_id,
+    }
+
+    # Run AI orchestrator with review_id
+    proposal = ai_orchestrator.generate_project_feedback(
+        project=test_project,
+        focus_areas=["consensus"],
+        user_id=user_id,
+        review_id=review_id,
+    )
+
+    assert proposal is not None
+    assert len(proposal.findings) >= 2
+
+    # Check ai_usage_ledger
+    with db_manager.session() as conn:
+        row = conn.execute(
+            "SELECT * FROM ai_usage_ledger WHERE project_id = ? AND review_id = ?",
+            (project_id, review_id),
+        ).fetchone()
+
+    assert row is not None
+    assert row["user_id"] == user_id
+    assert row["prompt_tokens"] > 0
+    assert row["completion_tokens"] > 0
+    assert row["duration_ms"] >= 0
+    assert row["status"] == "success"
+
+    # Test summary aggregator
+    summary = ai_orchestrator.get_project_usage_summary(project_id)
+    assert summary["totalCalls"] >= 1
+    assert summary["totalTokens"] > 0
+
+
+def test_source_ingestion_preserves_canonical_verbatim_raw_text():
+    """Verify that source ingestion canonically preserves verbatim raw code, indentation, and symbols."""
+    from backend.app.services.source_ingestion_service import source_ingestion_service
+    from backend.app.db.repository import community_repo
+
+    owner_id = f"usr_{uuid.uuid4().hex[:8]}"
+    email = f"{owner_id}@example.com"
+    community_repo.ensure_profile_exists(user_id=owner_id, username=owner_id, display_name="Dev", email=email)
+
+    proj = project_repo.create_project(
+        user_id=owner_id,
+        name="Source Raw Verification",
+        tagline="Verifying raw code preservation",
+        category="developer-tools",
+        description="Testing raw code ingestion",
+    )
+    project_id = proj["id"]
+
+    raw_code = (
+        "```python\n"
+        "# Verbatim Indentation & Special Symbols: [CRITICAL]\n"
+        "def execute_lease_fencing(token: str) -> bool:\n"
+        "    if not token or len(token) < 16:\n"
+        "        raise ValueError('Invalid token: @#$%^&*')\n"
+        "    return True\n"
+        "```\n"
+    )
+
+    sources = source_ingestion_service.ingest_uploaded_file(
+        project_id=project_id,
+        owner_id=owner_id,
+        filename="lease_manager.py",
+        content_bytes=raw_code.encode("utf-8"),
+    )
+
+    assert sources and len(sources) > 0
+    source = sources[0]
+    assert source["name"] == "lease_manager.py"
+    # Canonical stored text must contain verbatim raw characters and fences
+    assert "```python" in source["contentText"]
+    assert "def execute_lease_fencing(token: str) -> bool:" in source["contentText"]
+    assert "@#$%^&*" in source["contentText"]
+
+
+def test_compare_feedback_reports_includes_omitted_findings():
+    """Verify that compare_feedback_reports tracks findings omitted in the target report as resolved."""
+    from fastapi.testclient import TestClient
+    from backend.app.main import app
+    from backend.app.db.connection import db_manager
+    from backend.app.services.auth_service import create_access_token
+    from backend.app.db.repository import community_repo
+
+    client = TestClient(app)
+    user_id = f"usr_{uuid.uuid4().hex[:8]}"
+    email = f"{user_id}@example.com"
+    token = create_access_token(user_id=user_id, email=email, username=user_id)
+    community_repo.ensure_profile_exists(user_id=user_id, username=user_id, display_name="Auditor", email=email)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    proj = project_repo.create_project(
+        user_id=user_id,
+        name="Audited Architecture",
+        tagline="Testing report diff engine resolution",
+        category="developer-tools",
+        description="Testing diffing logic",
+    )
+    project_id = proj["id"]
+
+    # Base report with 2 findings
+    base_rep_id = f"rep_base_{uuid.uuid4().hex[:6]}"
+    target_rep_id = f"rep_target_{uuid.uuid4().hex[:6]}"
+    rev_base = f"rev_{uuid.uuid4().hex[:6]}"
+    rev_target = f"rev_{uuid.uuid4().hex[:6]}"
+
+    with db_manager.session() as conn:
+        conn.execute("INSERT INTO ai_reviews (id, project_id, user_id, model_id, provider, status, created_at) VALUES (?, ?, ?, 'gemini-2.5-flash', 'gemini', 'completed', datetime('now'))", (rev_base, project_id, user_id))
+        conn.execute("INSERT INTO ai_reviews (id, project_id, user_id, model_id, provider, status, created_at) VALUES (?, ?, ?, 'gemini-2.5-flash', 'gemini', 'completed', datetime('now'))", (rev_target, project_id, user_id))
+
+        conn.execute("INSERT INTO feedback_reports (id, review_id, project_id, executive_summary, strengths_summary, total_findings_count, created_at) VALUES (?, ?, ?, 'Base', 'Str', 2, datetime('now'))", (base_rep_id, rev_base, project_id))
+        conn.execute("INSERT INTO feedback_reports (id, review_id, project_id, executive_summary, strengths_summary, total_findings_count, created_at) VALUES (?, ?, ?, 'Target', 'Str', 1, datetime('now'))", (target_rep_id, rev_target, project_id))
+
+        # Base findings: Bug 1 (will persist) and Bug 2 (will be omitted in target report)
+        conn.execute("INSERT INTO feedback_findings (id, report_id, project_id, title, severity, category, observation, evidence_quote, recommendation, status, created_at, updated_at) VALUES (?, ?, ?, 'Missing Rate Limiter', 'high', 'security', 'obs', 'ev', 'rec', 'open', datetime('now'), datetime('now'))", (f"fnd_1_{project_id[:6]}", base_rep_id, project_id))
+        conn.execute("INSERT INTO feedback_findings (id, report_id, project_id, title, severity, category, observation, evidence_quote, recommendation, status, created_at, updated_at) VALUES (?, ?, ?, 'Unencrypted Local Cache', 'medium', 'security', 'obs', 'ev', 'rec', 'open', datetime('now'), datetime('now'))", (f"fnd_2_{project_id[:6]}", base_rep_id, project_id))
+
+        # Target finding: Bug 1 persisted
+        conn.execute("INSERT INTO feedback_findings (id, report_id, project_id, title, severity, category, observation, evidence_quote, recommendation, status, created_at, updated_at) VALUES (?, ?, ?, 'Missing Rate Limiter', 'high', 'security', 'obs', 'ev', 'rec', 'open', datetime('now'), datetime('now'))", (f"fnd_3_{project_id[:6]}", target_rep_id, project_id))
+
+    res = client.get(
+        f"/api/v1/projects/{project_id}/reports/compare?base_id={base_rep_id}&target_id={target_rep_id}",
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    diff = res.json()
+    assert diff["resolvedCount"] == 1
+    assert diff["persistedCount"] == 1
+
+    # Finding 'Unencrypted Local Cache' was resolved by omission
+    omitted = next((item for item in diff["items"] if item["title"] == "Unencrypted Local Cache"), None)
+    assert omitted is not None
+    assert omitted["changeType"] == "resolved"
+    assert omitted["statusInTarget"] is None
+

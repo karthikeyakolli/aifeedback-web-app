@@ -328,23 +328,29 @@ class ProjectChatAndWorkflowService:
                     f"Implementation verified. Found supporting technical evidence in source '{evidence[0].source_name}': "
                     f"'{evidence[0].clean_quote}'. The risk has been successfully mitigated."
                 )
-                # Mark finding as addressed
+                # Mark finding as addressed upon verified implementation
                 if finding_id:
                     conn.execute(
                         "UPDATE feedback_findings SET status = 'addressed', resolved_at = ?, updated_at = ? WHERE id = ?",
                         (now, now, finding_id),
                     )
+                new_task_status = "completed"
             else:
-                ver_status = "passed"  # Default clean verification approval
-                ver_feedback = "Verification passed based on developer declaration and updated specification context."
+                ver_status = "failed"
+                ver_feedback = (
+                    "Verification failed: No matching technical evidence or code changes confirming "
+                    "this resolution were discovered in project knowledge sources. Please attach source "
+                    "code, diffs, or specifications demonstrating the change."
+                )
+                new_task_status = "in_progress"
 
             conn.execute(
                 """
                 UPDATE improvement_tasks
-                SET status = 'completed', verification_status = ?, verification_feedback = ?, updated_at = ?
+                SET status = ?, verification_status = ?, verification_feedback = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (ver_status, ver_feedback, now, task_id),
+                (new_task_status, ver_status, ver_feedback, now, task_id),
             )
 
         return {

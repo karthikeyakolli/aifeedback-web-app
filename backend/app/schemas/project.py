@@ -246,7 +246,7 @@ class FindingComparisonItem(BaseModel):
     severity: FindingSeverity
     category: FindingCategory
     status_in_base: Optional[FindingStatus] = Field(None, validation_alias=AliasChoices("statusInBase", "status_in_base"), serialization_alias="statusInBase")
-    status_in_target: FindingStatus = Field(..., validation_alias=AliasChoices("statusInTarget", "status_in_target"), serialization_alias="statusInTarget")
+    status_in_target: Optional[FindingStatus] = Field(None, validation_alias=AliasChoices("statusInTarget", "status_in_target"), serialization_alias="statusInTarget")
     change_type: Literal['new', 'resolved', 'reopened', 'persisted'] = Field(..., validation_alias=AliasChoices("changeType", "change_type"), serialization_alias="changeType")
 
 

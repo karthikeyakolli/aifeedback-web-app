@@ -275,6 +275,22 @@ def compare_feedback_reports(
                 )
             )
 
+    # Check for base findings absent in target report (resolved by omission)
+    for key, bf in base_map.items():
+        if key not in target_map:
+            resolved += 1
+            comparison_items.append(
+                FindingComparisonItem(
+                    finding_id=bf["id"],
+                    title=bf["title"],
+                    severity=bf["severity"],
+                    category=bf["category"],
+                    status_in_base=bf["status"],
+                    status_in_target=None,
+                    change_type="resolved",
+                )
+            )
+
     return FeedbackReportComparison(
         project_id=project_id,
         base_report_id=base_id,

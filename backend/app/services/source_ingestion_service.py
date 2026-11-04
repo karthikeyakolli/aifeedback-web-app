@@ -102,17 +102,15 @@ class SourceIngestionService:
         except Exception:
             raw_text = content_bytes.decode("latin-1", errors="replace")
 
-        clean_text = clean_input_text(raw_text)
-        file_size = len(content_bytes)
-
-        source_type = "spec_doc" if any(filename.lower().endswith(e) for e in ALLOWED_DOC_EXTENSIONS) else "file"
-
+        # Preserve canonical verbatim raw_text in database storage
         source_id = f"src_{uuid.uuid4().hex[:12]}"
         now = self._utc_now()
+        file_size = len(content_bytes)
+        source_type = "spec_doc" if any(filename.lower().endswith(e) for e in ALLOWED_DOC_EXTENSIONS) else "file"
 
         metadata = {
-            "char_count": len(clean_text),
-            "line_count": len(clean_text.splitlines()),
+            "char_count": len(raw_text),
+            "line_count": len(raw_text.splitlines()),
             "extension": os.path.splitext(filename)[1].lower(),
         }
 
@@ -127,7 +125,7 @@ class SourceIngestionService:
                 """,
                 (
                     source_id, project_id, owner_id, source_type, filename, filename,
-                    file_size, mime_type, "", clean_text, json.dumps(metadata),
+                    file_size, mime_type, "", raw_text, json.dumps(metadata),
                     now, now,
                 ),
             )
@@ -151,14 +149,14 @@ class SourceIngestionService:
             for i, page in enumerate(reader.pages):
                 page_text = page.extract_text() or ""
                 if page_text.strip():
-                    extracted_pages.append(f"--- [Page {i + 1}] ---\n{clean_input_text(page_text)}")
+                    extracted_pages.append(f"--- [Page {i + 1}] ---\n{page_text}")
         except Exception:
             # Fallback regex extraction of text streams from raw PDF bytes
             raw_str = content_bytes.decode("latin-1", errors="ignore")
             matches = re.findall(r"\(([^\(\)\\]{4,})\)", raw_str)
             if matches:
                 sample_text = " ".join(matches[:200])
-                extracted_pages.append(f"--- [Page 1] ---\n{clean_input_text(sample_text)}")
+                extracted_pages.append(f"--- [Page 1] ---\n{sample_text}")
             else:
                 extracted_pages.append(f"--- [Page 1] ---\nTechnical document: {filename}")
 

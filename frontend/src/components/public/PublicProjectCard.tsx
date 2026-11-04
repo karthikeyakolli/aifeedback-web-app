@@ -1,67 +1,25 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import {
   ExternalLink,
-  ChevronUp,
   Sparkles,
   GitBranch,
   ArrowRight,
   ShieldCheck,
   User,
+  Eye,
 } from 'lucide-react';
 import type { PublicProject } from '../../types';
-import { api } from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
 
 interface PublicProjectCardProps {
   project: PublicProject;
-  onUpvoteChange?: (projectId: string, upvotesCount: number, hasUpvoted: boolean) => void;
+  onUpvoteChange?: (projectId: string, upvotesCount: number, hasUpvoted?: boolean) => void;
 }
 
 export const PublicProjectCard: React.FC<PublicProjectCardProps> = ({
   project,
-  onUpvoteChange,
 }) => {
-  const { isAuthenticated, openAuthModal } = useAuth();
-  const [upvotesCount, setUpvotesCount] = useState(project.upvotesCount);
-  const [hasUpvoted, setHasUpvoted] = useState(false);
-  const [isUpvoting, setIsUpvoting] = useState(false);
-
-  const handleUpvote = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!isAuthenticated) {
-      openAuthModal('login');
-      return;
-    }
-
-    if (isUpvoting) return;
-    setIsUpvoting(true);
-
-    // Optimistic calculation
-    const nextHasUpvoted = !hasUpvoted;
-    const nextCount = nextHasUpvoted ? upvotesCount + 1 : Math.max(0, upvotesCount - 1);
-    setUpvotesCount(nextCount);
-    setHasUpvoted(nextHasUpvoted);
-
-    try {
-      const res = await api.upvotePublicProject(project.id);
-      setUpvotesCount(res.upvotesCount);
-      setHasUpvoted(res.hasUpvoted);
-      if (onUpvoteChange) {
-        onUpvoteChange(project.id, res.upvotesCount, res.hasUpvoted);
-      }
-    } catch (err) {
-      // Revert optimistic state
-      setUpvotesCount(upvotesCount);
-      setHasUpvoted(hasUpvoted);
-      console.error('Failed to upvote project:', err);
-    } finally {
-      setIsUpvoting(false);
-    }
-  };
 
   const getGradient = (name: string) => {
     const gradients = [
@@ -114,22 +72,11 @@ export const PublicProjectCard: React.FC<PublicProjectCardProps> = ({
             </div>
           </div>
 
-          {/* Upvote Pill */}
-          <button
-            type="button"
-            onClick={handleUpvote}
-            disabled={isUpvoting}
-            aria-label={`Upvote ${project.name}, current count ${upvotesCount}`}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shrink-0 cursor-pointer',
-              hasUpvoted
-                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                : 'bg-[var(--surface-raised)] border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
-            )}
-          >
-            <ChevronUp className={cn('w-4 h-4', hasUpvoted ? 'text-white' : 'text-[var(--text-muted)]')} />
-            <span>{upvotesCount}</span>
-          </button>
+          {/* Read-Only Public Audit Badge */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)] text-[var(--text-secondary)] text-[11px] font-bold shrink-0">
+            <Eye className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Read-Only</span>
+          </div>
         </div>
 
         {/* Tagline / Brief Problem Statement */}

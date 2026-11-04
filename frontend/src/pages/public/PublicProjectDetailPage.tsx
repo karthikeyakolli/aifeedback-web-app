@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom';
 import {
   ExternalLink,
   ChevronLeft,
-  ChevronUp,
   Sparkles,
   GitBranch,
   ShieldCheck,
@@ -14,28 +13,22 @@ import {
   Calendar,
   User,
   Filter,
+  Eye,
 } from 'lucide-react';
 import type { PublicProject, FeedbackReport } from '../../types';
 import { api } from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/common/Button';
 import { SeverityPill, type FindingSeverity } from '../../components/common/SeverityPill';
 import { cn } from '../../lib/utils';
 
 export const PublicProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { isAuthenticated, openAuthModal } = useAuth();
 
   const [project, setProject] = useState<PublicProject | null>(null);
   const [report, setReport] = useState<FeedbackReport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isNotFound, setIsNotFound] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-
-  // Upvote state
-  const [upvotesCount, setUpvotesCount] = useState(0);
-  const [hasUpvoted, setHasUpvoted] = useState(false);
-  const [isUpvoting, setIsUpvoting] = useState(false);
 
   // Finding filter
   const [severityFilter, setSeverityFilter] = useState<string>('all');
@@ -53,7 +46,6 @@ export const PublicProjectDetailPage: React.FC = () => {
         if (projRes.status === 'fulfilled') {
           const p = projRes.value;
           setProject(p);
-          setUpvotesCount(p.upvotesCount);
         } else {
           setIsNotFound(true);
           return;
@@ -70,33 +62,6 @@ export const PublicProjectDetailPage: React.FC = () => {
         setIsLoading(false);
       });
   }, [id]);
-
-  const handleUpvote = async () => {
-    if (!project) return;
-    if (!isAuthenticated) {
-      openAuthModal('login');
-      return;
-    }
-    if (isUpvoting) return;
-    setIsUpvoting(true);
-
-    const nextHasUpvoted = !hasUpvoted;
-    const nextCount = nextHasUpvoted ? upvotesCount + 1 : Math.max(0, upvotesCount - 1);
-    setUpvotesCount(nextCount);
-    setHasUpvoted(nextHasUpvoted);
-
-    try {
-      const res = await api.upvotePublicProject(project.id);
-      setUpvotesCount(res.upvotesCount);
-      setHasUpvoted(res.hasUpvoted);
-    } catch (err) {
-      setUpvotesCount(upvotesCount);
-      setHasUpvoted(hasUpvoted);
-      console.error('Failed to upvote:', err);
-    } finally {
-      setIsUpvoting(false);
-    }
-  };
 
   const handleShare = async () => {
     try {
@@ -205,26 +170,12 @@ export const PublicProjectDetailPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Action Header: Upvote & Share */}
+          {/* Action Header: Read-Only Scrutiny & Share */}
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleUpvote}
-              disabled={isUpvoting}
-              aria-label={`Upvote ${project.name}`}
-              className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-extrabold transition-all cursor-pointer shadow-xs',
-                hasUpvoted
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'bg-[var(--surface-raised)] border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
-              )}
-            >
-              <ChevronUp className="w-4 h-4" />
-              <span>Upvote</span>
-              <span className="ml-1 px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono text-[11px]">
-                {upvotesCount}
-              </span>
-            </button>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)] text-[var(--text-secondary)] text-xs font-semibold shadow-xs">
+              <Eye className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Public Audit (Read-Only)</span>
+            </div>
 
             <Button
               variant="outline"

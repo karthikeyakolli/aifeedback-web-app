@@ -100,10 +100,12 @@ class AIOrchestratorService:
         focus_areas: Optional[List[str]] = None,
         user_id: Optional[str] = None,
         preferred_provider: Optional[str] = None,
+        review_id: Optional[str] = None,
     ) -> StructuredProjectFeedbackProposal:
         """Executes the AI provider cascade for technical project audits."""
         focus = focus_areas or []
-        user_id = user_id or project.get("userId") or project.get("user_id")
+        user_id = user_id or project.get("userId") or project.get("user_id") or "usr_anonymous"
+        project_id = project.get("id")
 
         providers_to_try = list(self.default_provider_order)
         if preferred_provider and preferred_provider in providers_to_try:
@@ -111,22 +113,47 @@ class AIOrchestratorService:
             providers_to_try.insert(0, preferred_provider)
 
         last_error = None
+        call_start = time.time()
 
         for provider in providers_to_try:
             if provider == "deterministic":
                 logger.info("Executing deterministic offline synthesis as final fallback.")
                 proposal = self._generate_deterministic_proposal(project, focus)
-                return self.sanitize_feedback_proposal(proposal)
+                sanitized = self.sanitize_feedback_proposal(proposal)
+                duration_ms = int((time.time() - call_start) * 1000)
+                prompt_toks = max(200, len(project.get("description", "")) // 4 + 300)
+                comp_toks = 450
+                try:
+                    self.record_token_usage(
+                        user_id=user_id,
+                        provider="deterministic",
+                        model_id="offline-rule-engine-v1",
+                        task_type="project_review",
+                        prompt_tokens=prompt_toks,
+                        completion_tokens=comp_toks,
+                        duration_ms=duration_ms,
+                        project_id=project_id,
+                        review_id=review_id,
+                        status="success",
+                    )
+                except Exception as log_err:
+                    logger.warning("Failed to record token usage for deterministic run: %s", log_err)
+                setattr(sanitized, "_usage", {"prompt_tokens": prompt_toks, "completion_tokens": comp_toks, "provider": "deterministic"})
+                return sanitized
 
             api_key = self._resolve_api_key(provider, user_id)
             if not api_key:
                 continue
 
             try:
+                provider_start = time.time()
                 logger.info("Attempting project feedback generation via provider '%s'...", provider)
+                model_id = "unknown"
                 if provider == "gemini":
+                    model_id = getattr(settings, "gemini_model", "gemini-2.5-flash")
                     proposal = self._call_gemini(project, focus, api_key)
                 elif provider == "openrouter":
+                    model_id = getattr(settings, "openrouter_model", "meta-llama/llama-3.3-70b-instruct:free")
                     from backend.app.services.openrouter_service import OpenRouterProvider, openrouter_provider
                     if getattr(openrouter_provider, "generate_project_feedback", None) and getattr(openrouter_provider.generate_project_feedback, "__code__", None) != OpenRouterProvider.generate_project_feedback.__code__:
                         proposal = openrouter_provider.generate_project_feedback(project, focus)
@@ -134,6 +161,7 @@ class AIOrchestratorService:
                         op = OpenRouterProvider(api_key=api_key, free_only=True)
                         proposal = op.generate_project_feedback(project, focus)
                 elif provider == "nvidia":
+                    model_id = getattr(settings, "nvidia_model", "meta/llama-3.1-70b-instruct")
                     from backend.app.services.nvidia_service import NvidiaNimProvider, nvidia_provider
                     if getattr(nvidia_provider, "generate_project_feedback", None) and getattr(nvidia_provider.generate_project_feedback, "__code__", None) != NvidiaNimProvider.generate_project_feedback.__code__:
                         proposal = nvidia_provider.generate_project_feedback(project, focus)
@@ -141,12 +169,33 @@ class AIOrchestratorService:
                         np = NvidiaNimProvider(api_key=api_key)
                         proposal = np.generate_project_feedback(project, focus)
                 elif provider == "groq":
+                    model_id = getattr(settings, "groq_model", "llama-3.3-70b-versatile")
                     proposal = self._call_groq(project, focus, api_key)
                 else:
                     continue
 
                 if proposal and proposal.findings:
-                    return self.sanitize_feedback_proposal(proposal)
+                    duration_ms = int((time.time() - provider_start) * 1000)
+                    prompt_toks = max(300, len(project.get("description", "")) // 4 + 400)
+                    comp_toks = max(400, len(proposal.executive_summary) // 4 + sum(len(f.observation) // 4 for f in proposal.findings))
+                    try:
+                        self.record_token_usage(
+                            user_id=user_id,
+                            provider=provider,
+                            model_id=model_id,
+                            task_type="project_review",
+                            prompt_tokens=prompt_toks,
+                            completion_tokens=comp_toks,
+                            duration_ms=duration_ms,
+                            project_id=project_id,
+                            review_id=review_id,
+                            status="success",
+                        )
+                    except Exception as log_err:
+                        logger.warning("Failed to record token usage for provider %s: %s", provider, log_err)
+                    sanitized = self.sanitize_feedback_proposal(proposal)
+                    setattr(sanitized, "_usage", {"prompt_tokens": prompt_toks, "completion_tokens": comp_toks, "provider": provider})
+                    return sanitized
 
             except Exception as e:
                 last_error = e
@@ -155,7 +204,28 @@ class AIOrchestratorService:
 
         # If all providers were exhausted or failed, guarantee offline synthesis
         logger.warning("All configured AI providers exhausted. Falling back to deterministic proposal.")
-        return self.sanitize_feedback_proposal(self._generate_deterministic_proposal(project, focus))
+        proposal = self._generate_deterministic_proposal(project, focus)
+        sanitized = self.sanitize_feedback_proposal(proposal)
+        duration_ms = int((time.time() - call_start) * 1000)
+        prompt_toks = 500
+        comp_toks = 400
+        try:
+            self.record_token_usage(
+                user_id=user_id,
+                provider="deterministic",
+                model_id="offline-rule-engine-v1",
+                task_type="project_review",
+                prompt_tokens=prompt_toks,
+                completion_tokens=comp_toks,
+                duration_ms=duration_ms,
+                project_id=project_id,
+                review_id=review_id,
+                status="success",
+            )
+        except Exception as log_err:
+            logger.warning("Failed to record fallback token usage: %s", log_err)
+        setattr(sanitized, "_usage", {"prompt_tokens": prompt_toks, "completion_tokens": comp_toks, "provider": "deterministic"})
+        return sanitized
 
     def _call_gemini(
         self,
@@ -371,6 +441,8 @@ class AIOrchestratorService:
                 ),
             )
         return {"id": ledger_id, "costUsd": cost_usd, "recordedAt": now}
+
+    record_token_usage = record_usage
 
     def get_project_usage_summary(self, project_id: str) -> Dict[str, Any]:
         """Calculates total token usage and cost for a project."""

@@ -239,12 +239,24 @@ class ReviewWorker:
             # 1. Fetch project technical context
             project = self.repo.get_project(project_id, requesting_user_id=user_id)
 
-            # 2. Execute AI generation OUTSIDE database transactions
-            proposal = project_ai_engine.call_ai_cascade(project, focus_areas=[])
+            # 2. Execute AI generation OUTSIDE database transactions using unified orchestrator
+            from backend.app.services.ai_orchestrator import ai_orchestrator
+            preferred_prov = review.get("provider")
+            proposal = ai_orchestrator.generate_project_feedback(
+                project=project,
+                focus_areas=[],
+                user_id=user_id,
+                preferred_provider=preferred_prov,
+                review_id=review_id,
+            )
 
             # 3. Finalize in Transaction B (Atomic report, findings, status, review count)
             findings_dicts = [f.model_dump() for f in proposal.findings]
             duration_ms = int((time.time() - start_time) * 1000)
+
+            usage = getattr(proposal, "_usage", {})
+            input_tokens = usage.get("prompt_tokens", 1500)
+            output_tokens = usage.get("completion_tokens", 850)
 
             self.repo.finalize_feedback_report(
                 review_id=review_id,
@@ -255,6 +267,8 @@ class ReviewWorker:
                 worker_id=self.worker_id,
                 lease_token=lease_token,
                 duration_ms=duration_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
 
             log_structured_signal(
