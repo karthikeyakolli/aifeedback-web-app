@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, File, UploadFile
 
 from backend.app.schemas.project import (
     ProjectCreate,
@@ -18,10 +18,26 @@ from backend.app.schemas.project import (
     ReportExportResponse,
     PublicProjectRead,
     PublicUpvoteResponse,
+    StructuredProjectFeedbackProposal,
+    ProjectSourceRead,
+    ProjectRepoLinkRequest,
+    RAGQueryRequest,
+    ProjectAIConfigRequest,
+    CompletenessDecisionRequest,
+    ProjectChatCreateRequest,
+    ProjectChatMessageRequest,
+    FindingActionRequest,
+    TaskStatusUpdateRequest,
 )
 from backend.app.db.project_repository import project_repo
 from backend.app.services.auth_service import get_current_user_optional, get_current_user_required
 from backend.app.services.project_ai_review_engine import project_ai_engine
+from backend.app.services.source_ingestion_service import source_ingestion_service
+from backend.app.services.rag_engine import rag_engine
+from backend.app.services.ai_orchestrator import ai_orchestrator
+from backend.app.services.comprehensive_intelligence_service import comprehensive_intelligence
+from backend.app.services.completeness_map_service import completeness_map_service
+from backend.app.services.project_chat_service import project_chat_service
 
 router = APIRouter(tags=["Projects"])
 
@@ -315,6 +331,355 @@ def export_feedback_report(
         filename=f"feedback-report-{project_id[:8]}-{safe_id[:8]}.md",
         content=markdown_content,
     )
+
+
+# =============================================================================
+# Phase 4: Project Source Ingestion Endpoints
+# =============================================================================
+
+@router.post("/projects/{project_id}/sources/upload", response_model=List[ProjectSourceRead], status_code=status.HTTP_201_CREATED)
+async def upload_project_source_file(
+    project_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Uploads and ingests a source file or ZIP archive into project sources and indexes into RAG."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+
+    file_bytes = await file.read()
+    sources = source_ingestion_service.ingest_uploaded_file(
+        project_id=project_id,
+        owner_id=user_id,
+        filename=file.filename or "upload.txt",
+        content_bytes=file_bytes,
+        mime_type=file.content_type,
+    )
+    for s in sources:
+        rag_engine.index_project_source(s)
+
+    return sources
+
+
+@router.post("/projects/{project_id}/sources/repository", response_model=List[ProjectSourceRead], status_code=status.HTTP_201_CREATED)
+def link_project_repository(
+    project_id: str,
+    payload: ProjectRepoLinkRequest,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Inspects a public GitHub or GitLab repository and ingests source and architecture specs into RAG."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+
+    sources = source_ingestion_service.ingest_git_repository(
+        project_id=project_id,
+        owner_id=user_id,
+        repo_url=payload.repository_url,
+    )
+    for s in sources:
+        rag_engine.index_project_source(s)
+
+    return sources
+
+
+@router.get("/projects/{project_id}/sources", response_model=List[ProjectSourceRead])
+def list_project_sources(
+    project_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Lists all active source files ingested for a project."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return source_ingestion_service.list_project_sources(project_id, owner_id=user_id)
+
+
+@router.delete("/projects/{project_id}/sources/{source_id}")
+def delete_project_source(
+    project_id: str,
+    source_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Deletes (soft deletes) an ingested source file from a project."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    success = source_ingestion_service.delete_project_source(source_id=source_id, owner_id=user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Source not found or unauthorized.")
+    return {"deleted": True, "sourceId": source_id}
+
+
+# =============================================================================
+# Phase 5: Advanced RAG Retrieval Endpoints
+# =============================================================================
+
+@router.post("/projects/{project_id}/rag/query")
+def query_project_rag(
+    project_id: str,
+    payload: RAGQueryRequest,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Executes hybrid BM25 and dense semantic retrieval across project and reference knowledge bases."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    results = rag_engine.hybrid_search(
+        project_id=project_id,
+        query=payload.query,
+        top_k=payload.top_k,
+        include_reference_kb=payload.include_reference,
+    )
+    return [
+        {
+            "chunkId": r.chunk_id,
+            "sourceId": r.source_id,
+            "sourceName": r.source_name,
+            "cleanQuote": r.clean_quote,
+            "knowledgeBase": r.knowledge_base,
+            "score": r.score,
+            "relevancePercentage": r.relevance_percentage,
+            "pageNumber": r.page_number,
+            "sectionHeading": r.section_heading,
+            "lineRange": r.line_range,
+        }
+        for r in results
+    ]
+
+
+# =============================================================================
+# Phase 6: AI Provider Orchestration & Usage Ledger Endpoints
+# =============================================================================
+
+@router.get("/projects/{project_id}/ai-config")
+def get_project_ai_config(
+    project_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Retrieves AI provider preferences and task configurations for a project."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return ai_orchestrator.get_project_ai_config(project_id)
+
+
+@router.post("/projects/{project_id}/ai-config")
+def set_project_ai_config(
+    project_id: str,
+    payload: ProjectAIConfigRequest,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Configures primary and fallback AI providers for a project task."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return ai_orchestrator.set_project_ai_config(
+        project_id=project_id,
+        user_id=user_id,
+        task_type=payload.task_type,
+        primary_provider=payload.primary_provider,
+        fallback_provider=payload.fallback_provider,
+        model_override=payload.model_override,
+    )
+
+
+@router.get("/projects/{project_id}/usage")
+def get_project_ai_usage(
+    project_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Returns aggregated token usage, cost ledger, and average latency metrics for a project."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return ai_orchestrator.get_project_usage_summary(project_id)
+
+
+# =============================================================================
+# Phase 7: Comprehensive AI Intelligence Endpoints
+# =============================================================================
+
+@router.post("/projects/{project_id}/audit", response_model=StructuredProjectFeedbackProposal)
+def run_comprehensive_project_audit(
+    project_id: str,
+    review_mode: str = Query("comprehensive", pattern="^(immediate|comprehensive|guided_discovery)$"),
+    roles: Optional[List[str]] = Query(None),
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Executes a multi-role specialized technical audit across Architect, Product, Code, and UX domains."""
+    user_id = get_user_id(current_user)
+    project = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return comprehensive_intelligence.run_multi_role_audit(
+        project=project,
+        review_mode=review_mode,
+        focus_roles=roles,
+        user_id=user_id,
+    )
+
+
+@router.get("/projects/{project_id}/discovery-questions")
+def get_guided_discovery_questions(
+    project_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Generates structured architectural discovery questions tailored to project category and specs."""
+    user_id = get_user_id(current_user)
+    project = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return comprehensive_intelligence.generate_guided_discovery_questions(project)
+
+
+# =============================================================================
+# Phase 8: Product Completeness Map Endpoints
+# =============================================================================
+
+@router.get("/projects/{project_id}/completeness-map")
+def get_product_completeness_map(
+    project_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Builds and returns the product completeness knowledge graph, tree hierarchy, and gap matrix."""
+    user_id = get_user_id(current_user)
+    project = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return completeness_map_service.build_completeness_map(project)
+
+
+@router.post("/projects/{project_id}/completeness-map/decisions")
+def record_author_decision(
+    project_id: str,
+    payload: CompletenessDecisionRequest,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Records an author decision (approved, dismissed, deferred) for a completeness graph node."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return completeness_map_service.record_author_decision(
+        project_id=project_id,
+        user_id=user_id,
+        node_id=payload.node_id,
+        decision_type=payload.decision,
+        rationale=payload.rationale or "",
+    )
+
+
+# =============================================================================
+# Phase 9: Project Chat, Findings Actions, and Improvement Tasks
+# =============================================================================
+
+@router.get("/projects/{project_id}/chats")
+def list_project_chats(
+    project_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Lists persistent project chat sessions."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return project_chat_service.list_chats(project_id=project_id, user_id=user_id)
+
+
+@router.post("/projects/{project_id}/chats", status_code=status.HTTP_201_CREATED)
+def create_project_chat(
+    project_id: str,
+    payload: ProjectChatCreateRequest,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Creates a new scoped chat session (project_wide, review, or finding)."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return project_chat_service.create_chat(
+        project_id=project_id,
+        user_id=user_id,
+        title=payload.title,
+        chat_scope=payload.chat_scope,
+        target_review_id=payload.target_review_id,
+        target_finding_id=payload.target_finding_id,
+    )
+
+
+@router.get("/projects/{project_id}/chats/{chat_id}")
+def get_project_chat(
+    project_id: str,
+    chat_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Fetches chat session message history with classified intent and citations."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return project_chat_service.get_chat(chat_id=chat_id, user_id=user_id)
+
+
+@router.post("/projects/{project_id}/chats/{chat_id}/messages")
+def send_project_chat_message(
+    project_id: str,
+    chat_id: str,
+    payload: ProjectChatMessageRequest,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Sends a message, retrieves context via RAG, generates assistant response, and classifies message."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return project_chat_service.send_message(
+        chat_id=chat_id,
+        user_id=user_id,
+        content=payload.content,
+    )
+
+
+@router.post("/projects/{project_id}/findings/{finding_id}/actions")
+def take_finding_action(
+    project_id: str,
+    finding_id: str,
+    payload: FindingActionRequest,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Applies author action (accept, edit, reject, defer) to a finding and creates an improvement task."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return project_chat_service.take_finding_action(
+        project_id=project_id,
+        finding_id=finding_id,
+        user_id=user_id,
+        action=payload.action,
+        custom_recommendation=payload.custom_recommendation,
+        rationale=payload.rationale,
+    )
+
+
+@router.get("/projects/{project_id}/tasks")
+def list_improvement_tasks(
+    project_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Lists improvement tasks created from AI findings for a project."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return project_chat_service.list_improvement_tasks(project_id=project_id, user_id=user_id)
+
+
+@router.patch("/projects/{project_id}/tasks/{task_id}")
+def update_task_status(
+    project_id: str,
+    task_id: str,
+    payload: TaskStatusUpdateRequest,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Updates the progress status of an improvement task."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return project_chat_service.update_task_status(
+        task_id=task_id,
+        user_id=user_id,
+        new_status=payload.status,
+    )
+
+
+@router.post("/projects/{project_id}/tasks/{task_id}/verify")
+def verify_task_implementation(
+    project_id: str,
+    task_id: str,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Runs automated AI verification against project sources to verify if a task is solved."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return project_chat_service.verify_task_implementation(
+        task_id=task_id,
+        user_id=user_id,
+    )
+
 
 
 

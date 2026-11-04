@@ -35,6 +35,21 @@ import type {
   CreatorProfileUpdatePayload,
   CreatorStudioOverview,
   PublicCreatorProfile,
+  CredentialMetadata,
+  CredentialTestResult,
+  AuthenticatedPrincipal,
+  UserIdentity,
+  MFAStatus,
+  MFAEnrollmentData,
+  ProjectSource,
+  RetrievedKnowledgeEvidence,
+  ProjectAIConfig,
+  ProjectAIUsageSummary,
+  CompletenessMapData,
+  ProjectChat,
+  ProjectChatMessage,
+  ImprovementTask,
+  GuidedDiscoveryQuestion,
 } from '../types';
 import { mockPosts, mockComments } from '../fixtures/mockData';
 
@@ -1470,6 +1485,498 @@ export const api = {
       const err = await res.json().catch(() => ({ detail: 'Creator profile not found' }));
       throw new Error(err.detail || 'Creator profile not found');
     }
+    return res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 3 — BYOK Credential Vault (Server-Side AES-256-GCM)
+  // ---------------------------------------------------------------------------
+  async listCredentials(): Promise<CredentialMetadata[]> {
+    const res = await fetch(`${API_BASE}/credentials`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to list credentials' }));
+      throw new Error(err.detail || 'Failed to list credentials');
+    }
+    return res.json();
+  },
+
+  async addCredential(data: {
+    provider: string;
+    displayName: string;
+    secret: string;
+  }): Promise<CredentialMetadata> {
+    const res = await fetch(`${API_BASE}/credentials`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to save credential' }));
+      throw new Error(err.detail || 'Failed to save credential');
+    }
+    return res.json();
+  },
+
+  async getCredential(credentialId: string): Promise<CredentialMetadata> {
+    const res = await fetch(`${API_BASE}/credentials/${credentialId}`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Credential not found' }));
+      throw new Error(err.detail || 'Credential not found');
+    }
+    return res.json();
+  },
+
+  async testCredential(credentialId: string): Promise<CredentialTestResult> {
+    const res = await fetch(`${API_BASE}/credentials/${credentialId}/test`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Credential test failed' }));
+      throw new Error(err.detail || 'Credential test failed');
+    }
+    return res.json();
+  },
+
+  async updateCredential(
+    credentialId: string,
+    data: { displayName?: string; isEnabled?: boolean }
+  ): Promise<CredentialMetadata> {
+    const res = await fetch(`${API_BASE}/credentials/${credentialId}`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update credential' }));
+      throw new Error(err.detail || 'Failed to update credential');
+    }
+    return res.json();
+  },
+
+  async rotateCredential(credentialId: string, newSecret: string): Promise<CredentialMetadata> {
+    const res = await fetch(`${API_BASE}/credentials/${credentialId}/rotate`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({ newSecret }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to rotate secret' }));
+      throw new Error(err.detail || 'Failed to rotate secret');
+    }
+    return res.json();
+  },
+
+  async deleteCredential(credentialId: string): Promise<{ message: string }> {
+    const res = await fetch(`${API_BASE}/credentials/${credentialId}`, {
+      method: 'DELETE',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to delete credential' }));
+      throw new Error(err.detail || 'Failed to delete credential');
+    }
+    return res.json();
+  },
+
+  async migrateLocalStorageCredentials(): Promise<{ migratedCount: number; errors: string[] }> {
+    const providerKeys = [
+      { key: 'gemini_api_key', provider: 'gemini', name: 'Migrated Gemini Key' },
+      { key: 'openrouter_api_key', provider: 'openrouter', name: 'Migrated OpenRouter Key' },
+      { key: 'nvidia_api_key', provider: 'nvidia', name: 'Migrated NVIDIA Key' },
+      { key: 'groq_api_key', provider: 'groq', name: 'Migrated Groq Key' },
+    ];
+    let count = 0;
+    const errors: string[] = [];
+
+    for (const item of providerKeys) {
+      const secret = localStorage.getItem(item.key);
+      if (secret && secret.trim().length > 0) {
+        try {
+          await this.addCredential({
+            provider: item.provider,
+            displayName: item.name,
+            secret: secret.trim(),
+          });
+          localStorage.removeItem(item.key);
+          count++;
+        } catch (e: any) {
+          errors.push(`Failed to migrate ${item.provider}: ${e?.message || e}`);
+        }
+      }
+    }
+    return { migratedCount: count, errors };
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 3 — Unified Identity, MFA, and Password Reset
+  // ---------------------------------------------------------------------------
+  async getAuthConfig(): Promise<{ provider: string; isSupabase: boolean; mfaEnabled: boolean; oauthProviders: string[] }> {
+    const res = await fetch(`${API_BASE}/auth/config`);
+    return res.json();
+  },
+
+  async getPrincipal(): Promise<AuthenticatedPrincipal> {
+    const res = await fetch(`${API_BASE}/auth/principal`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to retrieve authenticated principal');
+    }
+    return res.json();
+  },
+
+  async requestPasswordReset(email: string): Promise<{ message: string; devToken?: string }> {
+    const res = await fetch(`${API_BASE}/auth/password-reset/request`, {
+      method: 'POST',
+      headers: getHeaders(false),
+      body: JSON.stringify({ email }),
+    });
+    return res.json();
+  },
+
+  async confirmPasswordReset(token: string, newPassword: string): Promise<{ message: string }> {
+    const res = await fetch(`${API_BASE}/auth/password-reset/confirm`, {
+      method: 'POST',
+      headers: getHeaders(false),
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to reset password' }));
+      throw new Error(err.detail || 'Failed to reset password');
+    }
+    return res.json();
+  },
+
+  async oauthCallback(provider: string, code: string, state: string): Promise<AuthResponse> {
+    const res = await fetch(`${API_BASE}/auth/oauth/callback`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({ provider, code, state }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'OAuth authentication failed' }));
+      throw new Error(err.detail || 'OAuth authentication failed');
+    }
+    const data: AuthResponse = await res.json();
+    setStoredToken(data.accessToken);
+    return data;
+  },
+
+  async listLinkedIdentities(): Promise<UserIdentity[]> {
+    const res = await fetch(`${API_BASE}/auth/identities`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  async unlinkIdentity(provider: string): Promise<{ message: string }> {
+    const res = await fetch(`${API_BASE}/auth/identities/${provider}`, {
+      method: 'DELETE',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to unlink identity' }));
+      throw new Error(err.detail || 'Failed to unlink identity');
+    }
+    return res.json();
+  },
+
+  async getMFAStatus(): Promise<MFAStatus> {
+    const res = await fetch(`${API_BASE}/auth/mfa/status`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) return { is_enabled: false, factor_type: null };
+    return res.json();
+  },
+
+  async enrollMFA(): Promise<MFAEnrollmentData> {
+    const res = await fetch(`${API_BASE}/auth/mfa/enroll`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to start MFA enrollment' }));
+      throw new Error(err.detail || 'Failed to start MFA enrollment');
+    }
+    return res.json();
+  },
+
+  async verifyMFA(code: string): Promise<MFAStatus> {
+    const res = await fetch(`${API_BASE}/auth/mfa/verify`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Invalid MFA verification code' }));
+      throw new Error(err.detail || 'Invalid MFA verification code');
+    }
+    return res.json();
+  },
+
+  async unenrollMFA(): Promise<MFAStatus> {
+    const res = await fetch(`${API_BASE}/auth/mfa/unenroll`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to disable MFA' }));
+      throw new Error(err.detail || 'Failed to disable MFA');
+    }
+    return res.json();
+  },
+
+  // Project Sources (Phase 4)
+  async uploadProjectSource(projectId: string, file: File): Promise<ProjectSource[]> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/projects/${projectId}/sources/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to upload source file' }));
+      throw new Error(err.detail || 'Failed to upload source file');
+    }
+    return res.json();
+  },
+
+  async linkProjectRepository(projectId: string, repositoryUrl: string): Promise<ProjectSource[]> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/sources/repository`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({ repository_url: repositoryUrl }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to link repository' }));
+      throw new Error(err.detail || 'Failed to link repository');
+    }
+    return res.json();
+  },
+
+  async listProjectSources(projectId: string): Promise<ProjectSource[]> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/sources`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  async deleteProjectSource(projectId: string, sourceId: string): Promise<boolean> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/sources/${sourceId}`, {
+      method: 'DELETE',
+      headers: getHeaders(true),
+    });
+    return res.ok;
+  },
+
+  // Project RAG (Phase 5)
+  async queryProjectRAG(projectId: string, query: string, topK = 6): Promise<RetrievedKnowledgeEvidence[]> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/rag/query`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({ query, top_k: topK, include_reference: true }),
+    });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  // AI Orchestration & Usage Ledger (Phase 6)
+  async getProjectAIConfig(projectId: string): Promise<Record<string, ProjectAIConfig>> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/ai-config`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) return {};
+    return res.json();
+  },
+
+  async setProjectAIConfig(
+    projectId: string,
+    config: { taskType?: string; primaryProvider: string; fallbackProvider?: string; modelOverride?: string }
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/ai-config`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({
+        task_type: config.taskType || 'review',
+        primary_provider: config.primaryProvider,
+        fallback_provider: config.fallbackProvider || 'openrouter',
+        model_override: config.modelOverride,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to update project AI configuration');
+    return res.json();
+  },
+
+  async getProjectAIUsage(projectId: string): Promise<ProjectAIUsageSummary> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/usage`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      return { projectId, totalCalls: 0, totalTokens: 0, totalCostUsd: 0, averageLatencyMs: 0 };
+    }
+    return res.json();
+  },
+
+  // Comprehensive AI Intelligence (Phase 7)
+  async runComprehensiveAudit(projectId: string, reviewMode = 'comprehensive', roles?: string[]): Promise<any> {
+    const q = new URLSearchParams({ review_mode: reviewMode });
+    if (roles && roles.length) {
+      roles.forEach(r => q.append('roles', r));
+    }
+    const res = await fetch(`${API_BASE}/projects/${projectId}/audit?${q.toString()}`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to run comprehensive audit' }));
+      throw new Error(err.detail || 'Failed to run comprehensive audit');
+    }
+    return res.json();
+  },
+
+  async getDiscoveryQuestions(projectId: string): Promise<GuidedDiscoveryQuestion[]> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/discovery-questions`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  // Product Completeness Map (Phase 8)
+  async getCompletenessMap(projectId: string): Promise<CompletenessMapData> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/completeness-map`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to load completeness map' }));
+      throw new Error(err.detail || 'Failed to load completeness map');
+    }
+    return res.json();
+  },
+
+  async recordCompletenessDecision(
+    projectId: string,
+    nodeId: string,
+    decision: 'approved' | 'dismissed' | 'deferred',
+    rationale = ''
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/completeness-map/decisions`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({ node_id: nodeId, decision, rationale }),
+    });
+    if (!res.ok) throw new Error('Failed to record completeness decision');
+    return res.json();
+  },
+
+  // Project Chat & Tasks (Phase 9)
+  async listProjectChats(projectId: string): Promise<ProjectChat[]> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/chats`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  async createProjectChat(
+    projectId: string,
+    title: string,
+    chatScope = 'project_wide',
+    targetReviewId?: string,
+    targetFindingId?: string
+  ): Promise<ProjectChat> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/chats`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({
+        title,
+        chat_scope: chatScope,
+        target_review_id: targetReviewId,
+        target_finding_id: targetFindingId,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to create project chat session');
+    return res.json();
+  },
+
+  async getProjectChat(projectId: string, chatId: string): Promise<ProjectChat> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/chats/${chatId}`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Chat session not found');
+    return res.json();
+  },
+
+  async sendProjectChatMessage(projectId: string, chatId: string, content: string): Promise<ProjectChatMessage> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/chats/${chatId}/messages`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error('Failed to send message');
+    return res.json();
+  },
+
+  async takeFindingAction(
+    projectId: string,
+    findingId: string,
+    action: 'accept' | 'edit' | 'reject' | 'defer',
+    customRecommendation?: string,
+    rationale?: string
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/findings/${findingId}/actions`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({
+        action,
+        custom_recommendation: customRecommendation,
+        rationale,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to record finding action');
+    return res.json();
+  },
+
+  async listImprovementTasks(projectId: string): Promise<ImprovementTask[]> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/tasks`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  async updateImprovementTaskStatus(
+    projectId: string,
+    taskId: string,
+    status: 'todo' | 'in_progress' | 'completed'
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) throw new Error('Failed to update task status');
+    return res.json();
+  },
+
+  async verifyImprovementTask(projectId: string, taskId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/tasks/${taskId}/verify`, {
+      method: 'POST',
+      headers: getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Failed to run task verification');
     return res.json();
   },
 };

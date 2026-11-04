@@ -18,6 +18,20 @@ from backend.app.main import app
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def ensure_offline_ai(monkeypatch):
+    """Guarantees unit tests use deterministic grounded generator without network waits."""
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    monkeypatch.setenv("NVIDIA_API_KEY", "")
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    from backend.app.config import settings
+    settings.gemini_api_key = ""
+    settings.openrouter_api_key = ""
+    settings.nvidia_api_key = ""
+    settings.groq_api_key = ""
+
+
 def create_user_and_headers(prefix: str = "creator") -> tuple[dict, dict]:
     uid = str(uuid.uuid4())[:8]
     email = f"{prefix}_{uid}@example.com"

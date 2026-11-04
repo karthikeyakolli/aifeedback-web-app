@@ -29,6 +29,7 @@ import type { ProductReview, Citation } from '../../types';
 import { formatTimeAgo } from '../../lib/utils';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
+import { cleanDisplayProse } from './ChatGPTMessage';
 
 interface NotebookStudioRailProps {
   selectedReview: ProductReview | null;
@@ -913,7 +914,7 @@ export const NotebookStudioRail: React.FC<NotebookStudioRailProps> = ({
             </div>
 
             <div className="p-3.5 rounded-xl border border-indigo-500/20 bg-indigo-500/5 text-xs text-[var(--text-primary)] italic leading-relaxed">
-              "{inspectedCitation.quoteSnippet}"
+              "{cleanDisplayProse(inspectedCitation.quoteSnippet)}"
             </div>
 
             <div className="space-y-2 text-xs text-[var(--text-muted)]">
@@ -926,7 +927,7 @@ export const NotebookStudioRail: React.FC<NotebookStudioRailProps> = ({
               <div className="flex items-center justify-between">
                 <span>Attribution:</span>
                 <span className="font-semibold text-[var(--text-primary)]">
-                  {inspectedCitation.authorDisplay || inspectedCitation.commentId}
+                  {cleanDisplayProse(inspectedCitation.authorDisplay) || inspectedCitation.commentId}
                 </span>
               </div>
               {inspectedCitation.filename && (
@@ -934,6 +935,22 @@ export const NotebookStudioRail: React.FC<NotebookStudioRailProps> = ({
                   <span>File:</span>
                   <span className="font-semibold text-[var(--text-primary)] font-mono text-[11px]">
                     {inspectedCitation.filename}
+                  </span>
+                </div>
+              )}
+              {inspectedCitation.pageNumber && (
+                <div className="flex items-center justify-between">
+                  <span>Page:</span>
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    Page {inspectedCitation.pageNumber}
+                  </span>
+                </div>
+              )}
+              {inspectedCitation.section && (
+                <div className="flex items-center justify-between">
+                  <span>Section:</span>
+                  <span className="font-semibold text-[var(--text-primary)] max-w-44 truncate">
+                    {cleanDisplayProse(inspectedCitation.section)}
                   </span>
                 </div>
               )}

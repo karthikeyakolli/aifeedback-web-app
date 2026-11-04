@@ -1,0 +1,26 @@
+{
+  "name": "aifeedback-web-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Project Feedback — Integrated AI-Powered Product Development and Auditing Platform",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "lint": "npm --prefix frontend run lint",
+    "test": "npm run test:backend",
+    "test:backend": "python -m pytest backend/tests -v"
+  },
+  "keywords": [
+    "ai",
+    "product-feedback",
+    "code-audit",
+    "architecture",
+    "rag",
+    "react19",
+    "fastapi"
+  ],
+  "author": "Karthikeya Kolli",
+  "license": "MIT"
+}
+

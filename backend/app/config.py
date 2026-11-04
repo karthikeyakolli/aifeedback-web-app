@@ -81,6 +81,24 @@ class Settings(BaseModel):
     max_analysis_comments: int = int(os.getenv("MAX_ANALYSIS_COMMENTS", "100"))
     ai_cooldown_seconds: int = int(os.getenv("AI_COOLDOWN_SECONDS", "30"))
 
+    # Phase 2 Durable Review Execution & Worker Configuration
+    review_worker_enabled: bool = os.getenv("REVIEW_WORKER_ENABLED", "true").lower() in ("true", "1", "yes")
+    review_worker_poll_interval_sec: float = float(os.getenv("REVIEW_WORKER_POLL_INTERVAL_SEC", "1.0"))
+    review_worker_lease_duration_sec: int = int(os.getenv("REVIEW_WORKER_LEASE_DURATION_SEC", "60"))
+    review_worker_heartbeat_interval_sec: int = int(os.getenv("REVIEW_WORKER_HEARTBEAT_INTERVAL_SEC", "15"))
+    review_worker_max_attempts: int = int(os.getenv("REVIEW_WORKER_MAX_ATTEMPTS", "3"))
+    review_recovery_interval_sec: int = int(os.getenv("REVIEW_RECOVERY_INTERVAL_SEC", "30"))
+    review_sync_mode: bool = os.getenv("REVIEW_SYNC_MODE", "true").lower() in ("true", "1", "yes")
+
+    # Phase 3 BYOK Encrypted Vault & Multi-Provider OAuth Configuration
+    byok_encryption_key: str = os.getenv("BYOK_ENCRYPTION_KEY", "")
+    byok_key_version: str = os.getenv("BYOK_KEY_VERSION", "v1")
+    google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    google_client_secret: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    github_client_id: str = os.getenv("GITHUB_CLIENT_ID", "")
+    github_client_secret: str = os.getenv("GITHUB_CLIENT_SECRET", "")
+    mfa_enabled: bool = os.getenv("MFA_ENABLED", "true").lower() in ("true", "1", "yes")
+
 
 settings = Settings()
 

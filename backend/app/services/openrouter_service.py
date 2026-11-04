@@ -211,6 +211,15 @@ class OpenRouterProvider:
         )
 
         json_data = self._call_openrouter_json(system_instruction, user_prompt)
+        if isinstance(json_data, dict) and "findings" in json_data and isinstance(json_data["findings"], list):
+            valid_categories = {"architecture", "ux", "performance", "security", "bug", "accessibility"}
+            valid_severities = {"blocker", "high", "medium", "low"}
+            for f in json_data["findings"]:
+                if isinstance(f, dict):
+                    cat = str(f.get("category", "architecture")).lower().strip()
+                    f["category"] = cat if cat in valid_categories else "architecture"
+                    sev = str(f.get("severity", "medium")).lower().strip()
+                    f["severity"] = sev if sev in valid_severities else "medium"
         return StructuredProjectFeedbackProposal.model_validate(json_data)
 
     def generate_analysis(

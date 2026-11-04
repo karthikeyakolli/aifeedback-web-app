@@ -17,7 +17,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Set, Tuple
 
-from backend.app.services.text_cleaner import clean_input_text
+from backend.app.services.text_cleaner import clean_input_text, clean_evidence_quote
 
 # Common English stopwords for query token filtering
 STOPWORDS: Set[str] = {
@@ -193,7 +193,7 @@ class DiscussionRetrievalService:
             for c in flat_comments:
                 if c.get("status") in ("moderated", "hidden", "flagged"):
                     continue
-                text = clean_input_text(c.get("content", ""))
+                text = clean_evidence_quote(c.get("content", ""))
                 tokens = extract_keywords(text)
                 docs.append({
                     "id": c["id"],
@@ -230,14 +230,14 @@ class DiscussionRetrievalService:
                     # Parse Markdown section heading if present
                     sec_m = re.search(r"^#{1,4}\s+(.+)", p_text)
                     if sec_m:
-                        current_section = sec_m.group(1).strip()
+                        current_section = clean_evidence_quote(sec_m.group(1).strip())
 
-                    if len(p_text) < 15:
+                    c_clean = clean_evidence_quote(p_text)
+                    if len(c_clean) < 15:
                         continue
 
                     chunk_counter += 1
                     chunk_id = f"{adoc['id']}_p{chunk_counter}"
-                    c_clean = clean_input_text(p_text)
                     docs.append({
                         "id": chunk_id,
                         "content": c_clean,
@@ -435,13 +435,16 @@ def retrieve_evidence(
         include_community=kwargs.get("include_community", True),
     )
 
-    # Format comments as simple dictionaries for the LLM prompt and validation
+    # Format comments as simple dictionaries for the LLM prompt, validation, and user display
     retrieved_dict_comments = [
         {
             "id": rc.comment_id,
-            "content": rc.content,
+            "content": clean_evidence_quote(rc.content),
+            "snippet": clean_evidence_quote(rc.content[:160]) + ("..." if len(rc.content) > 160 else ""),
             "score": rc.score,
-            "author_display": rc.author_display,
+            "relevance_percentage": min(100, max(1, int(rc.score * 100))) if rc.score > 0 else 0,
+            "author_display": clean_evidence_quote(rc.author_display),
+            "clean_author": clean_evidence_quote(rc.author_display),
             "is_anonymous": rc.is_anonymous,
             "matched_terms": rc.matched_terms,
             "source_type": rc.source_type,
@@ -449,7 +452,7 @@ def retrieve_evidence(
             "filename": rc.filename,
             "page_number": rc.page_number,
             "pageNumber": rc.page_number,
-            "section": rc.section,
+            "section": clean_evidence_quote(rc.section) if rc.section else None,
         }
         for rc in res.retrieved_comments
     ]

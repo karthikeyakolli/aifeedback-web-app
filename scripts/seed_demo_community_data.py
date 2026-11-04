@@ -176,7 +176,7 @@ def seed_demo_data():
                     "I had to guess Cmd+K to open the command palette. Please add an interactive 3-step onboarding walkthrough "
                     "or a visible cheat-sheet for new users."
                 ),
-                "is_anonymous": 0,
+                "is_anonymous": 1,
                 "upvotes_count": 18,
                 "is_helpful": 1,
             },

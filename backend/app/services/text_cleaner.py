@@ -9,6 +9,7 @@ markdown code fences, broken citations, or duplicate bullet symbols.
 from __future__ import annotations
 
 import html
+import json
 import re
 from typing import Any, Dict, List, Optional
 
@@ -216,3 +217,73 @@ def sanitize_gemini_analysis(output: Any) -> Any:
             output.limitations_and_uncertainty = clean_output_text(output.limitations_and_uncertainty)
 
     return output
+
+
+def clean_evidence_quote(text: Optional[str]) -> str:
+    """Strips all markdown formatting, symbols, page delimiters, and code fences from evidence quotes.
+    
+    Guarantees pure, human-readable prose without raw symbols, hashes, asterisks, brackets, or code fences.
+    """
+    if not text:
+        return ""
+    s = str(text)
+
+    # 1. Decode HTML entities first
+    s = html.unescape(s)
+
+    # 2. Strip code block fences and backticks
+    s = re.sub(r"```[\w]*|```", " ", s)
+    s = re.sub(r"`+([^`]+)`+", r"\1", s)
+    s = s.replace("`", "")
+
+    # 3. Strip document page markers (--- [Page 1] --- or [Page 2] or Page 1:)
+    s = re.sub(r"-{2,}\s*\[Page\s+\d+\]\s*-{2,}", " ", s, flags=re.IGNORECASE)
+    s = re.sub(r"\[Page\s+\d+\]", " ", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bPage\s+\d+\s*:\s*", " ", s, flags=re.IGNORECASE)
+
+    # 4. Strip markdown links [text](url) -> text
+    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", s)
+
+    # 5. Strip inline citation placeholders like [comment-123], [cite: 1], [ref: 45]
+    s = RE_INLINE_CITATIONS.sub(" ", s)
+
+    # 6. Strip stray brackets and braces
+    s = re.sub(r"[\[\]\{\}]", " ", s)
+
+    # 7. Strip markdown headers (# Heading -> Heading)
+    s = re.sub(r"#{1,6}\s*", " ", s)
+
+    # 8. Strip horizontal rules (---, ===, ___)
+    s = re.sub(r"-{3,}|={3,}|_{3,}", " ", s)
+
+    # 9. Strip bold and italic delimiters (**bold** -> bold, *italic* -> italic)
+    s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
+    s = re.sub(r"\*([^*]+)\*", r"\1", s)
+    s = re.sub(r"__([^_]+)__", r"\1", s)
+    s = re.sub(r"_([^_]+)_", r"\1", s)
+
+    # 10. Strip table formatting pipes (| col | col |)
+    s = re.sub(r"\|", " ", s)
+
+    # 11. Strip bullet prefixes and symbols (*, -, •, ▪, ▫, ◦, ■, □, ►, ▸, ▶, >, ~, ^)
+    s = re.sub(r"[\u2022\u25aa\u25ab\u25e6\u25a0\u25a1\u25ba\u25b8\u25b6\~]", " ", s)
+    s = re.sub(r"^\s*[\*\-\+\>\~]\s+", " ", s, flags=re.MULTILINE)
+
+    # 12. Strip any stray asterisks, hashes, backslashes, tildes, carets
+    s = re.sub(r"[\*#\\~^]", " ", s)
+
+    # 13. Strip HTML / XML tags
+    s = RE_XML_HTML_TAGS.sub(" ", s)
+
+    # 14. Strip non-printable control characters
+    s = RE_CONTROL_CHARS.sub("", s)
+
+    # 15. Normalize punctuation and whitespace (collapse duplicate spaces/tabs/newlines)
+    s = re.sub(r"\s+", " ", s).strip()
+
+    # 16. Remove awkward dangling punctuation or prefixes like ": " or "- "
+    s = re.sub(r"^[\s,;:\-–—\.]+", "", s)
+    s = re.sub(r"[\s\-–—]+$", "", s)
+
+    return s.strip()
+

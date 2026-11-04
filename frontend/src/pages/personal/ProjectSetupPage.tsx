@@ -14,11 +14,19 @@ import {
   RotateCcw,
   FileText,
   Shield,
+  Database,
+  Network,
+  CheckSquare,
+  MessageSquare,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import type { Project, ProjectCategory, ProjectStatus } from '../../types';
 import { Button } from '../../components/common/Button';
 import { ProjectReviewTab } from '../../components/product/ProjectReviewTab';
+import { ProjectSourcesTab } from '../../components/product/ProjectSourcesTab';
+import { ProjectCompletenessTab } from '../../components/product/ProjectCompletenessTab';
+import { ProjectTasksTab } from '../../components/product/ProjectTasksTab';
+import { ProjectChatTab } from '../../components/product/ProjectChatTab';
 import { cn } from '../../lib/utils';
 
 const APPROVED_CATEGORIES: { id: ProjectCategory; label: string }[] = [
@@ -54,7 +62,9 @@ export const ProjectSetupPage: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [activeTab, setActiveTab] = useState<'context' | 'review' | 'links' | 'settings'>('context');
+  const [activeTab, setActiveTab] = useState<
+    'context' | 'sources' | 'completeness' | 'tasks' | 'chat' | 'review' | 'links' | 'settings'
+  >('context');
 
   // Deletion & Visibility state
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -400,12 +410,16 @@ export const ProjectSetupPage: React.FC = () => {
       )}
 
       {/* 2. Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-[var(--border-default)]">
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-[var(--border-default)]">
         {[
-          { id: 'context', label: 'Technical Context & Specs', icon: FileText },
-          { id: 'review', label: 'AI Review & Feedback', icon: Sparkles },
+          { id: 'context', label: 'Specs & Context', icon: FileText },
+          { id: 'sources', label: 'Sources & RAG', icon: Database },
+          { id: 'completeness', label: 'Completeness Map', icon: Network },
+          { id: 'review', label: 'AI Review & Findings', icon: Sparkles },
+          { id: 'tasks', label: 'Tasks & AI Verification', icon: CheckSquare },
+          { id: 'chat', label: 'Project Assistant', icon: MessageSquare },
           { id: 'links', label: 'Links & Visibility', icon: Globe },
-          { id: 'settings', label: 'Lifecycle & Danger Zone', icon: Shield },
+          { id: 'settings', label: 'Lifecycle & Settings', icon: Shield },
         ].map((tab) => {
           const Icon = tab.icon;
           const isSelected = activeTab === tab.id;
@@ -415,13 +429,13 @@ export const ProjectSetupPage: React.FC = () => {
               type="button"
               onClick={() => setActiveTab(tab.id as any)}
               className={cn(
-                'flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-all cursor-pointer -mb-px',
+                'flex items-center gap-2 px-3 py-2.5 text-xs font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap -mb-px',
                 isSelected
                   ? 'border-[var(--accent)] text-[var(--accent)]'
                   : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               )}
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className="w-3.5 h-3.5 shrink-0" />
               <span>{tab.label}</span>
             </button>
           );
@@ -515,6 +529,10 @@ export const ProjectSetupPage: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'sources' && <ProjectSourcesTab project={project} />}
+
+      {activeTab === 'completeness' && <ProjectCompletenessTab project={project} />}
+
       {activeTab === 'review' && (
         <ProjectReviewTab
           project={project}
@@ -526,6 +544,10 @@ export const ProjectSetupPage: React.FC = () => {
           onSwitchToContextTab={() => setActiveTab('context')}
         />
       )}
+
+      {activeTab === 'tasks' && <ProjectTasksTab project={project} />}
+
+      {activeTab === 'chat' && <ProjectChatTab project={project} />}
 
       {activeTab === 'links' && (
         <div className="p-6 rounded-2xl border border-[var(--border-default)] bg-[var(--surface)] space-y-6">

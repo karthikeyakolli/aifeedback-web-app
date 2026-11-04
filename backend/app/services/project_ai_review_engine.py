@@ -80,16 +80,31 @@ class ProjectAIReviewEngine:
                 provider = "groq"
                 model_id = "llama-3.3-70b-versatile"
 
-        # 5. Create initial review record in 'queued' state
-        review = self.repo.create_ai_review(
+        # 5. Atomically reserve review session (protected by partial unique index and transaction serialization)
+        review = self.repo.reserve_ai_review(
             project_id=project_id,
             user_id=user_id,
             provider=provider,
             model_id=model_id,
+            max_attempts=settings.review_worker_max_attempts,
         )
 
-        # 6. Execute review pipeline
-        return self._execute_review_pipeline(review["id"], project, request.focus_areas or [])
+        from backend.app.services.review_worker import log_structured_signal, review_worker
+        log_structured_signal("review_reserved", review["id"], project_id=project_id)
+        log_structured_signal("review_job_enqueued", review["id"], project_id=project_id)
+
+        # 6. Execute synchronously if explicitly requested (or default sync in sync mode)
+        if request.sync is True or (request.sync is None and settings.review_sync_mode):
+            return review_worker.process_review_sync(review["id"])
+
+        # Otherwise return reserved review (queued) for asynchronous durable worker processing
+        return review
+
+    def call_ai_cascade(self, project: Dict[str, Any], focus_areas: List[str]) -> StructuredProjectFeedbackProposal:
+        """Executes the AI provider cascade via unified AIOrchestratorService outside database transactions."""
+        from backend.app.services.ai_orchestrator import ai_orchestrator
+        user_id = project.get("userId") or project.get("user_id")
+        return ai_orchestrator.generate_project_feedback(project, focus_areas=focus_areas, user_id=user_id)
 
     def _execute_review_pipeline(
         self,
@@ -97,59 +112,9 @@ class ProjectAIReviewEngine:
         project: Dict[str, Any],
         focus_areas: List[str],
     ) -> Dict[str, Any]:
-        """Executes the AI evaluation pipeline and persists structured findings."""
-        start_time = time.time()
-        project_id = project["id"]
-
-        # Transition state: queued -> processing
-        self.repo.update_ai_review_status(review_id, status="processing")
-
-        # Also set project status to in_review
-        try:
-            self.repo.update_project(project_id, project["userId"], {"status": "in_review"})
-        except Exception:
-            pass
-
-        try:
-            # Generate structured proposal
-            proposal = self._call_ai_model(project, focus_areas)
-
-            # Persist feedback report and findings
-            findings_dicts = [f.model_dump() for f in proposal.findings]
-            self.repo.save_feedback_report(
-                review_id=review_id,
-                project_id=project_id,
-                executive_summary=proposal.executive_summary,
-                strengths_summary=proposal.strengths_summary,
-                findings_data=findings_dicts,
-            )
-
-            duration_ms = int((time.time() - start_time) * 1000)
-            completed_review = self.repo.update_ai_review_status(
-                review_id,
-                status="completed",
-                duration_ms=duration_ms,
-            )
-            return completed_review
-
-        except Exception as e:
-            logger.error("AI Review execution failed for project %s: %s", project_id, e, exc_info=True)
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            # Revert project status so user can retry
-            try:
-                self.repo.update_project(project_id, project["userId"], {"status": "ready"})
-            except Exception:
-                pass
-
-            # Mark review as failed with real error detail
-            failed_review = self.repo.update_ai_review_status(
-                review_id,
-                status="failed",
-                error_message=str(e),
-                duration_ms=duration_ms,
-            )
-            return failed_review
+        """Backwards-compatible execution delegating to review_worker."""
+        from backend.app.services.review_worker import review_worker
+        return review_worker.process_review_sync(review_id)
 
     def _build_system_instruction(self) -> str:
         return (
@@ -194,16 +159,30 @@ class ProjectAIReviewEngine:
         )
 
     def _call_ai_model(self, project: Dict[str, Any], focus_areas: List[str]) -> StructuredProjectFeedbackProposal:
-        """Invokes Gemini (or fallback provider) and parses into StructuredProjectFeedbackProposal."""
-        api_key = settings.gemini_api_key
-        has_real_gemini = bool(api_key and "placeholder" not in api_key.lower())
+        """Invokes Gemini (or fallback provider) and parses into StructuredProjectFeedbackProposal.
+        
+        Seamlessly checks BYOK user credentials from the encrypted vault first.
+        """
+        from backend.app.services.vault_service import vault_service
+
+        user_id = project.get("userId") or project.get("user_id")
+
+        # Resolve active BYOK credentials for the project owner
+        byok_gemini = vault_service.get_active_credential_for_provider(user_id, "gemini") if user_id else None
+        byok_openrouter = vault_service.get_active_credential_for_provider(user_id, "openrouter") if user_id else None
+        byok_nvidia = vault_service.get_active_credential_for_provider(user_id, "nvidia") if user_id else None
+        byok_groq = vault_service.get_active_credential_for_provider(user_id, "groq") if user_id else None
+
+        # 1. Google Gemini
+        gemini_api_key = byok_gemini or settings.gemini_api_key
+        has_real_gemini = bool(gemini_api_key and "placeholder" not in gemini_api_key.lower())
 
         if has_real_gemini:
             try:
                 from google import genai
                 from google.genai import types
 
-                client = genai.Client(api_key=api_key)
+                client = genai.Client(api_key=gemini_api_key)
                 prompt = self._build_prompt(project, focus_areas)
                 system_instruction = self._build_system_instruction()
 
@@ -229,17 +208,19 @@ class ProjectAIReviewEngine:
                 logger.warning("Gemini model execution failed: %s. Attempting fallback.", e)
                 # Fall through to secondary providers or deterministic generator
 
-        # 2. OpenRouter Free-Tier Evaluation (Zero-Cost Guaranteed)
-        if settings.openrouter_api_key and "placeholder" not in settings.openrouter_api_key.lower():
+        # 2. OpenRouter Evaluation
+        openrouter_key = byok_openrouter or settings.openrouter_api_key
+        if openrouter_key and "placeholder" not in openrouter_key.lower():
             try:
                 from backend.app.services.openrouter_service import openrouter_provider
-                logger.info("Attempting AI review generation via OpenRouter Free Tier...")
+                logger.info("Attempting AI review generation via OpenRouter...")
                 return openrouter_provider.generate_project_feedback(project, focus_areas)
             except Exception as e:
-                logger.warning("OpenRouter free tier review failed: %s. Attempting next fallback.", e)
+                logger.warning("OpenRouter review failed: %s. Attempting next fallback.", e)
 
         # 3. NVIDIA NIM Evaluation
-        if settings.nvidia_api_key and "placeholder" not in settings.nvidia_api_key.lower():
+        nvidia_key = byok_nvidia or settings.nvidia_api_key
+        if nvidia_key and "placeholder" not in nvidia_key.lower():
             try:
                 from backend.app.services.nvidia_service import nvidia_provider
                 logger.info("Attempting AI review generation via NVIDIA NIM...")
@@ -247,14 +228,15 @@ class ProjectAIReviewEngine:
             except Exception as e:
                 logger.warning("NVIDIA NIM review failed: %s. Attempting next fallback.", e)
 
-        # 4. Check Groq secondary provider if configured
-        if settings.groq_api_key:
+        # 4. Groq Evaluation
+        groq_key = byok_groq or settings.groq_api_key
+        if groq_key:
             try:
                 import httpx
                 groq_prompt = f"{self._build_system_instruction()}\n\n{self._build_prompt(project, focus_areas)}"
                 resp = httpx.post(
                     "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
+                    headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
                     json={
                         "model": "llama-3.3-70b-versatile",
                         "messages": [

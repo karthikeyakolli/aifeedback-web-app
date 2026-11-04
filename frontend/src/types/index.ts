@@ -888,5 +888,234 @@ export interface PublicCreatorProfile {
   publishedProjects: PublicProject[];
 }
 
+// =============================================================================
+// Phase 3 — BYOK Credential Vault & Unified Identity Types
+// =============================================================================
+export type AIProviderId = 'gemini' | 'groq' | 'nvidia' | 'openrouter';
+
+export type CredentialValidationStatus = 'unverified' | 'valid' | 'invalid' | 'rate_limited';
+
+export interface CredentialMetadata {
+  id: string;
+  userId: string;
+  provider: AIProviderId;
+  displayName: string;
+  maskedPreview: string;
+  isEnabled: boolean;
+  validationStatus: CredentialValidationStatus;
+  lastTestedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CredentialTestResult {
+  success: boolean;
+  provider: string;
+  status: CredentialValidationStatus;
+  message: string;
+  latencyMs: number;
+}
+
+export interface AuthenticatedPrincipal {
+  user_id: string;
+  email: string;
+  username: string;
+  display_name: string;
+  avatar_url?: string | null;
+  role: string;
+  provider: string;
+  provider_subject: string;
+  email_verified: boolean;
+  session_id?: string | null;
+  roles: string[];
+}
+
+export interface UserIdentity {
+  id: string;
+  userId: string;
+  provider: 'email' | 'google' | 'github';
+  providerSubject: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface MFAStatus {
+  is_enabled: boolean;
+  factor_type: string | null;
+}
+
+export interface MFAEnrollmentData {
+  factor_id: string;
+  secret: string;
+  qr_code_uri: string;
+}
+
+// =============================================================================
+// Phases 4 to 10 — Source Ingestion, RAG, Graph, Tasks, and Chat Types
+// =============================================================================
+
+export interface ProjectSource {
+  id: string;
+  projectId: string;
+  ownerId: string;
+  sourceType: string;
+  name: string;
+  originalFilename: string;
+  fileSize: number;
+  mimeType: string;
+  contentText: string;
+  metadata?: Record<string, any>;
+  version: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface RetrievedKnowledgeEvidence {
+  chunkId: string;
+  sourceId: string;
+  sourceName: string;
+  cleanQuote: string;
+  knowledgeBase: 'project' | 'reference';
+  score: number;
+  relevancePercentage: number;
+  pageNumber?: number | null;
+  sectionHeading?: string | null;
+  lineRange?: string | null;
+}
+
+export interface ProjectAIConfig {
+  taskType?: string;
+  primaryProvider: string;
+  fallbackProvider?: string | null;
+  modelOverride?: string | null;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface ProjectAIUsageSummary {
+  projectId: string;
+  totalCalls: number;
+  totalTokens: number;
+  totalCostUsd: number;
+  averageLatencyMs: number;
+}
+
+export interface CompletenessNode {
+  id: string;
+  projectId: string;
+  nodeType: string;
+  title: string;
+  description: string;
+  status: 'complete' | 'incomplete' | 'missing' | 'contradictory';
+  confidenceScore: number;
+  sourceChunkIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompletenessEdge {
+  id: string;
+  projectId: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  relationshipType: string;
+  createdAt: string;
+}
+
+export interface CompletenessMapData {
+  summary: {
+    totalNodes: number;
+    completeCount: number;
+    incompleteCount: number;
+    missingCount: number;
+    contradictoryCount: number;
+    completenessPercentage: number;
+  };
+  graph: {
+    nodes: CompletenessNode[];
+    edges: CompletenessEdge[];
+  };
+  hierarchy: Array<{
+    tier: string;
+    tierLabel: string;
+    count: number;
+    items: CompletenessNode[];
+  }>;
+  table: Array<{
+    id: string;
+    type: string;
+    title: string;
+    description: string;
+    status: string;
+    confidenceScore: number;
+    connectedRelations: number;
+    hasGap: boolean;
+  }>;
+  decisions: Array<{
+    id: string;
+    projectId: string;
+    userId: string;
+    nodeId: string;
+    decisionType: string;
+    rationale: string;
+    createdAt: string;
+  }>;
+}
+
+export interface ProjectChat {
+  id: string;
+  projectId: string;
+  userId: string;
+  title: string;
+  chatScope: string;
+  targetReviewId?: string | null;
+  targetFindingId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages?: ProjectChatMessage[];
+}
+
+export interface ProjectChatMessage {
+  id: string;
+  chatId: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  citations: Array<{
+    source_name?: string;
+    sourceName?: string;
+    quote?: string;
+    clean_quote?: string;
+    relevance_percentage?: number;
+    relevancePercentage?: number;
+  }>;
+  classification: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
+export interface ImprovementTask {
+  id: string;
+  projectId: string;
+  findingId?: string | null;
+  title: string;
+  description: string;
+  actionType: string;
+  status: 'todo' | 'in_progress' | 'completed';
+  verificationStatus: string;
+  verificationFeedback?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GuidedDiscoveryQuestion {
+  id: string;
+  category: string;
+  question: string;
+  options: string[];
+  recommended: string;
+}
+
+
+
 
 

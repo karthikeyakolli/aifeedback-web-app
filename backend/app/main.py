@@ -27,7 +27,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager for clean startup and shutdown."""
     logger.info("Initializing Product Research Intelligence API (Phase 1 Shell)...")
     logger.info(f"Environment: {settings.environment} | Version: {settings.app_version}")
+
+    # Phase 2 Durable Background Review Worker & Stale Recovery Daemon
+    from backend.app.services.review_worker import review_worker
+    if settings.review_worker_enabled:
+        review_worker.start()
+
     yield
+
+    if settings.review_worker_enabled:
+        review_worker.stop()
     logger.info("Shutting down Product Research Intelligence API.")
 
 

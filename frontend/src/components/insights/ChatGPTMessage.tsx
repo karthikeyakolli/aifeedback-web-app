@@ -21,6 +21,49 @@ import type { ChatMessage, Citation } from '../../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { formatTimeAgo } from '../../lib/utils';
 
+export function cleanDisplayProse(text?: string | null): string {
+  if (!text) return '';
+  return text
+    // Strip code fences and backticks
+    .replace(/```[\w]*|```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/`/g, '')
+    // Strip page tokens like --- [Page 1] --- or [Page 1] or Page 1:
+    .replace(/-{2,}\s*\[Page\s+\d+\]\s*-{2,}/gi, ' ')
+    .replace(/\[Page\s+\d+\]/gi, ' ')
+    .replace(/\bPage\s+\d+\s*:\s*/gi, ' ')
+    // Strip markdown links [text](url) -> text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // Strip bracket citations [cite: 1], [comment-123], [1]
+    .replace(/\[(?:cite:?|comment:?|ref:?)?\s*[a-zA-Z0-9_-]+\]/gi, ' ')
+    // Strip stray brackets and braces
+    .replace(/[\[\]\{\}]/g, ' ')
+    // Strip markdown headers (# Heading -> Heading)
+    .replace(/#{1,6}\s*/g, ' ')
+    // Strip horizontal rules
+    .replace(/-{3,}|={3,}|_{3,}/g, ' ')
+    // Strip bold/italic formatting
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    // Strip table pipes
+    .replace(/\|/g, ' ')
+    // Strip bullet symbols
+    .replace(/[\u2022\u25aa\u25ab\u25e6\u25a0\u25a1\u25ba\u25b8\u25b6\~]/g, ' ')
+    .replace(/^\s*[\*\-\+\>\~]\s+/gm, ' ')
+    // Strip stray asterisks, hashes, backslashes, carets
+    .replace(/[\*#\\~^]/g, ' ')
+    // Strip HTML/XML tags
+    .replace(/<\/?[a-zA-Z0-9_-]+[^>]*>/g, ' ')
+    // Collapse whitespace
+    .replace(/\s+/g, ' ')
+    // Clean dangling prefixes/suffixes
+    .replace(/^[\s,;:\-–—\.]+/, '')
+    .replace(/[\s\-–—]+$/, '')
+    .trim();
+}
+
 interface ChatGPTMessageProps {
   message: ChatMessage;
   onCitationClick?: (citation: Citation | string) => void;
@@ -145,7 +188,7 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
                       {metadata.observed_facts.map((fact: string, idx: number) => (
                         <li key={idx} className="flex items-start gap-2 text-[var(--text-primary)]">
                           <span className="text-emerald-500 font-bold">•</span>
-                          <span>{fact}</span>
+                          <span>{cleanDisplayProse(fact)}</span>
                         </li>
                       ))}
                     </ul>
@@ -163,7 +206,7 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
                       {metadata.hypotheses.map((hyp: string, idx: number) => (
                         <li key={idx} className="flex items-start gap-2 text-[var(--text-primary)]">
                           <span className="text-indigo-500 font-bold">•</span>
-                          <span>{hyp}</span>
+                          <span>{cleanDisplayProse(hyp)}</span>
                         </li>
                       ))}
                     </ul>
@@ -184,16 +227,16 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
                           className="p-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 text-[var(--text-primary)]"
                         >
                           <div className="font-semibold text-xs flex items-center justify-between">
-                            <span>{r.action}</span>
+                            <span>{cleanDisplayProse(r.action)}</span>
                             {r.impact && (
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono">
-                                {r.impact}
+                                {cleanDisplayProse(r.impact)}
                               </span>
                             )}
                           </div>
                           {r.reason && (
                             <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                              {r.reason}
+                              {cleanDisplayProse(r.reason)}
                             </p>
                           )}
                         </div>
@@ -202,7 +245,60 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
                   </div>
                 )}
 
-                {/* 4. Visual Architecture Flow */}
+                {/* 4. Retrieved & Cited Source Evidence Details */}
+                {message.citations && message.citations.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-[var(--border-subtle)]">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                      <FileText className="w-3 h-3" />
+                      Retrieved & Verified Source Evidence
+                    </span>
+                    <div className="space-y-2">
+                      {message.citations.map((c, idx) => (
+                        <div
+                          key={c.commentId || idx}
+                          onClick={() => onCitationClick?.(c)}
+                          className="p-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] hover:border-indigo-500/50 transition-all cursor-pointer shadow-2xs space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              {c.sourceType === 'document' ? (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                                  <FileText className="w-2.5 h-2.5" />
+                                  Specification Document
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                  <User className="w-2.5 h-2.5" />
+                                  Community Contributor
+                                </span>
+                              )}
+                              <span className="font-semibold text-xs text-[var(--text-primary)]">
+                                {cleanDisplayProse(c.authorDisplay) || (c.sourceType === 'document' ? 'Specification Document' : 'Contributor')}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {c.pageNumber && (
+                                <span className="text-[10px] font-medium text-[var(--text-muted)] bg-[var(--surface-subtle)] px-1.5 py-0.5 rounded">
+                                  Page {c.pageNumber}
+                                </span>
+                              )}
+                              {c.section && (
+                                <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 max-w-40 truncate">
+                                  {cleanDisplayProse(c.section)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-xs text-[var(--text-secondary)] leading-relaxed italic">
+                            "{cleanDisplayProse(c.quoteSnippet)}"
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Visual Architecture Flow */}
                 {metadata.visual_diagram && (
                   <div className="space-y-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
@@ -215,13 +311,13 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
                   </div>
                 )}
 
-                {/* 5. Limitations & Missing Data */}
+                {/* 6. Limitations & Missing Data */}
                 {metadata.limitations && (
                   <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/50 text-[11px] text-[var(--text-muted)] flex items-start gap-2">
                     <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                     <span>
                       <strong className="text-[var(--text-primary)] font-semibold">Evidence Boundaries: </strong>
-                      {metadata.limitations}
+                      {cleanDisplayProse(metadata.limitations)}
                     </span>
                   </div>
                 )}
@@ -254,7 +350,7 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
                     ) : (
                       <User className="w-3 h-3 text-emerald-500" />
                     )}
-                    <span>{c.authorDisplay || c.commentId.slice(0, 8)}</span>
+                    <span>{cleanDisplayProse(c.authorDisplay) || c.commentId.slice(0, 8)}</span>
                   </button>
 
                   {/* Micro-Inspector Hover Card */}
@@ -262,14 +358,14 @@ export const ChatGPTMessage: React.FC<ChatGPTMessageProps> = ({
                     <div className="absolute left-0 bottom-full mb-2 w-72 p-3 rounded-xl bg-[var(--surface)] border border-indigo-500/30 shadow-xl z-30 text-xs animate-in fade-in zoom-in-95 duration-100 pointer-events-none">
                       <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[var(--border-subtle)]">
                         <span className="font-bold text-[11px] text-[var(--text-primary)] truncate">
-                          {c.authorDisplay || 'Verified Source'}
+                          {cleanDisplayProse(c.authorDisplay) || 'Verified Source'}
                         </span>
                         <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
                           {c.sourceType || 'comment'}
                         </span>
                       </div>
                       <p className="text-[11px] text-[var(--text-muted)] italic line-clamp-3 leading-relaxed">
-                        "{c.quoteSnippet}"
+                        "{cleanDisplayProse(c.quoteSnippet)}"
                       </p>
                       <div className="flex items-center justify-between pt-1.5 mt-1.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
                         <span>Click to open in Studio</span>

@@ -218,6 +218,193 @@ class CommunityRepository:
 
 
     # -------------------------------------------------------------------------
+    # Phase 3: Identity Linking, MFA, and Password Reset
+    # -------------------------------------------------------------------------
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Finds user by email in auth_users."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                "SELECT id, email FROM auth_users WHERE lower(email) = lower(?)",
+                (email.strip(),),
+            ).fetchone()
+            if not row:
+                return None
+            return {"id": row["id"], "email": row["email"]}
+
+    def create_password_reset_token(self, user_id: str, token: str, expires_at: str) -> None:
+        """Stores a cryptographically secure one-time password reset token."""
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO password_reset_tokens (token, user_id, expires_at, used, created_at)
+                VALUES (?, ?, ?, 0, ?)
+                """,
+                (token, user_id, expires_at, now),
+            )
+
+    def consume_password_reset_token(self, token: str, new_hashed_password: str) -> bool:
+        """Atomically validates, consumes token, and updates password."""
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            row = conn.execute(
+                """
+                SELECT token, user_id, expires_at, used
+                FROM password_reset_tokens
+                WHERE token = ?
+                """,
+                (token,),
+            ).fetchone()
+            if not row or row["used"] == 1:
+                return False
+            if row["expires_at"] < now:
+                return False
+
+            user_id = row["user_id"]
+            conn.execute(
+                "UPDATE auth_users SET hashed_password = ? WHERE id = ?",
+                (new_hashed_password, user_id),
+            )
+            conn.execute(
+                "UPDATE password_reset_tokens SET used = 1 WHERE token = ?",
+                (token,),
+            )
+            return True
+
+    def get_user_identity(self, provider: str, provider_subject: str) -> Optional[Dict[str, Any]]:
+        """Looks up linked OAuth identity."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                """
+                SELECT id, user_id, provider, provider_subject, email, created_at
+                FROM user_identities
+                WHERE provider = ? AND provider_subject = ?
+                """,
+                (provider.lower(), provider_subject),
+            ).fetchone()
+            if not row:
+                return None
+            return dict(row)
+
+    def link_user_identity(self, user_id: str, provider: str, provider_subject: str, email: str) -> Dict[str, Any]:
+        """Links an OAuth identity to a user account."""
+        now = utc_now_iso()
+        ident_id = str(uuid.uuid4())
+        with self.db.session() as conn:
+            existing = conn.execute(
+                "SELECT user_id FROM user_identities WHERE provider = ? AND provider_subject = ?",
+                (provider.lower(), provider_subject),
+            ).fetchone()
+            if existing and existing["user_id"] != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"This {provider.title()} account is already linked to a different profile.",
+                )
+            if not existing:
+                conn.execute(
+                    """
+                    INSERT INTO user_identities (id, user_id, provider, provider_subject, email, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (ident_id, user_id, provider.lower(), provider_subject, email, now),
+                )
+            return {
+                "id": ident_id if not existing else existing.get("id", ident_id),
+                "userId": user_id,
+                "provider": provider.lower(),
+                "providerSubject": provider_subject,
+                "email": email,
+                "createdAt": now,
+            }
+
+    def list_user_identities(self, user_id: str) -> List[Dict[str, Any]]:
+        """Returns all linked OAuth identities for a user."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, user_id, provider, provider_subject, email, created_at
+                FROM user_identities
+                WHERE user_id = ?
+                ORDER BY created_at ASC
+                """,
+                (user_id,),
+            ).fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "userId": r["user_id"],
+                    "provider": r["provider"],
+                    "providerSubject": r["provider_subject"],
+                    "email": r["email"],
+                    "createdAt": r["created_at"],
+                }
+                for r in rows
+            ]
+
+    def unlink_user_identity(self, user_id: str, provider: str) -> bool:
+        """Removes a linked OAuth identity."""
+        with self.db.session() as conn:
+            res = conn.execute(
+                "DELETE FROM user_identities WHERE user_id = ? AND provider = ?",
+                (user_id, provider.lower()),
+            )
+            return res.rowcount > 0
+
+    def get_user_mfa(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves user's MFA record."""
+        with self.db.session() as conn:
+            row = conn.execute(
+                "SELECT id, user_id, factor_type, secret_encrypted, is_enabled, created_at, updated_at FROM user_mfa WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            if not row:
+                return None
+            return dict(row)
+
+    def set_user_mfa_secret(self, user_id: str, factor_type: str, secret_encrypted: str) -> Dict[str, Any]:
+        """Creates or replaces an unverified MFA secret."""
+        now = utc_now_iso()
+        mfa_id = str(uuid.uuid4())
+        with self.db.session() as conn:
+            existing = conn.execute("SELECT id FROM user_mfa WHERE user_id = ?", (user_id,)).fetchone()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE user_mfa
+                    SET factor_type = ?, secret_encrypted = ?, is_enabled = 0, updated_at = ?
+                    WHERE user_id = ?
+                    """,
+                    (factor_type, secret_encrypted, now, user_id),
+                )
+                mfa_id = existing["id"]
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO user_mfa (id, user_id, factor_type, secret_encrypted, is_enabled, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 0, ?, ?)
+                    """,
+                    (mfa_id, user_id, factor_type, secret_encrypted, now, now),
+                )
+            return {"id": mfa_id, "userId": user_id, "factorType": factor_type, "isEnabled": False}
+
+    def enable_user_mfa(self, user_id: str) -> bool:
+        """Enables MFA after successful TOTP challenge."""
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            res = conn.execute(
+                "UPDATE user_mfa SET is_enabled = 1, updated_at = ? WHERE user_id = ?",
+                (now, user_id),
+            )
+            return res.rowcount > 0
+
+    def disable_user_mfa(self, user_id: str) -> bool:
+        """Disables/unenrolls user's MFA factor."""
+        with self.db.session() as conn:
+            res = conn.execute("DELETE FROM user_mfa WHERE user_id = ?", (user_id,))
+            return res.rowcount > 0
+
+
+    # -------------------------------------------------------------------------
     # Posts CRUD
     # -------------------------------------------------------------------------
     def create_post(self, author_id: str, data: Dict[str, Any]) -> Dict[str, Any]:

@@ -201,6 +201,7 @@ class AIReviewStartRequest(BaseModel):
 
     focus_areas: Optional[List[str]] = Field(default_factory=list, description="Optional areas of emphasis (e.g. ['security', 'performance'])")
     model_override: Optional[str] = Field(None, description="Optional approved model override")
+    sync: Optional[bool] = Field(None, description="Optional synchronous execution flag (for testing or direct wait)")
 
 
 class AIReviewStatusResponse(BaseModel):
@@ -214,6 +215,10 @@ class AIReviewStatusResponse(BaseModel):
     model_id: str = Field(..., validation_alias=AliasChoices("modelId", "model_id"), serialization_alias="modelId")
     error_message: Optional[str] = Field(None, validation_alias=AliasChoices("errorMessage", "error_message"), serialization_alias="errorMessage")
     execution_duration_ms: Optional[int] = Field(None, validation_alias=AliasChoices("executionDurationMs", "execution_duration_ms"), serialization_alias="executionDurationMs")
+    worker_id: Optional[str] = Field(None, validation_alias=AliasChoices("workerId", "worker_id"), serialization_alias="workerId")
+    attempt_count: Optional[int] = Field(0, validation_alias=AliasChoices("attemptCount", "attempt_count"), serialization_alias="attemptCount")
+    max_attempts: Optional[int] = Field(3, validation_alias=AliasChoices("maxAttempts", "max_attempts"), serialization_alias="maxAttempts")
+    scheduled_at: Optional[Union[datetime, str]] = Field(None, validation_alias=AliasChoices("scheduledAt", "scheduled_at"), serialization_alias="scheduledAt")
     created_at: Union[datetime, str] = Field(..., validation_alias=AliasChoices("createdAt", "created_at"), serialization_alias="createdAt")
     completed_at: Optional[Union[datetime, str]] = Field(None, validation_alias=AliasChoices("completedAt", "completed_at"), serialization_alias="completedAt")
 
@@ -266,5 +271,76 @@ class ReportExportResponse(BaseModel):
     format: str = "markdown"
     filename: str
     content: str
+
+
+# =============================================================================
+# Phase 4 to 10 Schemas: Sources, RAG, Graph, Tasks, and Chats
+# =============================================================================
+
+class ProjectSourceRead(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    project_id: str = Field(..., validation_alias=AliasChoices("projectId", "project_id"), serialization_alias="projectId")
+    owner_id: str = Field(..., validation_alias=AliasChoices("ownerId", "owner_id"), serialization_alias="ownerId")
+    source_type: str = Field(..., validation_alias=AliasChoices("sourceType", "source_type"), serialization_alias="sourceType")
+    name: str
+    original_filename: str = Field(..., validation_alias=AliasChoices("originalFilename", "original_filename"), serialization_alias="originalFilename")
+    file_size: int = Field(0, validation_alias=AliasChoices("fileSize", "file_size"), serialization_alias="fileSize")
+    mime_type: str = Field("text/plain", validation_alias=AliasChoices("mimeType", "mime_type"), serialization_alias="mimeType")
+    content_text: str = Field("", validation_alias=AliasChoices("contentText", "content_text"), serialization_alias="contentText")
+    metadata: dict = Field(default_factory=dict)
+    version: int = 1
+    is_active: bool = Field(True, validation_alias=AliasChoices("isActive", "is_active"), serialization_alias="isActive")
+    created_at: str = Field(..., validation_alias=AliasChoices("createdAt", "created_at"), serialization_alias="createdAt")
+
+
+class ProjectRepoLinkRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    repository_url: str = Field(..., validation_alias=AliasChoices("repositoryUrl", "repository_url"), min_length=10)
+
+
+class RAGQueryRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    query: str = Field(..., min_length=2)
+    top_k: int = Field(6, validation_alias=AliasChoices("topK", "top_k"), ge=1, le=20)
+    include_reference: bool = Field(True, validation_alias=AliasChoices("includeReference", "include_reference"))
+
+
+class ProjectAIConfigRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    task_type: str = Field("review", validation_alias=AliasChoices("taskType", "task_type"))
+    primary_provider: str = Field("gemini", validation_alias=AliasChoices("primaryProvider", "primary_provider"))
+    fallback_provider: Optional[str] = Field("openrouter", validation_alias=AliasChoices("fallbackProvider", "fallback_provider"))
+    model_override: Optional[str] = Field(None, validation_alias=AliasChoices("modelOverride", "model_override"))
+
+
+class CompletenessDecisionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    node_id: str = Field(..., validation_alias=AliasChoices("nodeId", "node_id"))
+    decision: str = Field("approved")  # approved, dismissed, deferred
+    rationale: Optional[str] = ""
+
+
+class ProjectChatCreateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    title: str = Field("Project Discussion", min_length=1)
+    chat_scope: str = Field("project_wide", validation_alias=AliasChoices("chatScope", "chat_scope"))
+    target_review_id: Optional[str] = Field(None, validation_alias=AliasChoices("targetReviewId", "target_review_id"))
+    target_finding_id: Optional[str] = Field(None, validation_alias=AliasChoices("targetFindingId", "target_finding_id"))
+
+
+class ProjectChatMessageRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+
+
+class FindingActionRequest(BaseModel):
+    action: str = Field("accept")  # accept, edit, reject, defer
+    custom_recommendation: Optional[str] = Field(None, validation_alias=AliasChoices("customRecommendation", "custom_recommendation"))
+    rationale: Optional[str] = None
+
+
+class TaskStatusUpdateRequest(BaseModel):
+    status: str = Field(...)  # todo, in_progress, completed
 
 

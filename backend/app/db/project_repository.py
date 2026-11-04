@@ -3,10 +3,15 @@
 from __future__ import annotations
 import uuid
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException, status
 from backend.app.db.connection import db_manager
+
+
+class StaleLeaseError(RuntimeError):
+    """Raised when a worker attempts to finalize or heartbeat a review whose lease was revoked, expired, or claimed by another worker."""
+    pass
 
 
 def utc_now_iso() -> str:
@@ -280,8 +285,75 @@ class ProjectRepository:
             return self._serialize_finding(updated_row)
 
     # -------------------------------------------------------------------------
-    # AI Reviews & Feedback Reports
+    # AI Reviews & Feedback Reports (Phase 2 Concurrency & Durable Execution)
     # -------------------------------------------------------------------------
+    def reserve_ai_review(
+        self,
+        project_id: str,
+        user_id: str,
+        provider: str = "gemini",
+        model_id: str = "gemini-2.5-flash",
+        max_attempts: int = 3,
+    ) -> Dict[str, Any]:
+        """Atomically reserves a new AI review session or returns an existing active review.
+
+        Concurrency Guarantee:
+        Protected by immediate transaction serialization and database-enforced partial unique index.
+        At most one active review (queued or processing) can exist per project.
+        """
+        review_id = str(uuid.uuid4())
+        now = utc_now_iso()
+
+        with self.db.session() as conn:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError:
+                pass
+
+            # 1. Check for existing active review
+            existing = conn.execute(
+                """
+                SELECT * FROM ai_reviews
+                WHERE project_id = ? AND status IN ('queued', 'processing')
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (project_id,),
+            ).fetchone()
+            if existing:
+                return self._serialize_review(existing)
+
+            # 2. Insert new queued review
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO ai_reviews (
+                        id, project_id, user_id, model_id, provider,
+                        status, attempt_count, max_attempts, created_at
+                    ) VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?)
+                    """,
+                    (review_id, project_id, user_id, model_id, provider, max_attempts, now),
+                )
+                # Set project to in_review
+                conn.execute(
+                    "UPDATE projects SET status = 'in_review', updated_at = ? WHERE id = ?",
+                    (now, project_id),
+                )
+            except sqlite3.IntegrityError:
+                # Database partial unique index prevented duplicate insertion under race condition
+                active = conn.execute(
+                    """
+                    SELECT * FROM ai_reviews
+                    WHERE project_id = ? AND status IN ('queued', 'processing')
+                    ORDER BY created_at DESC LIMIT 1
+                    """,
+                    (project_id,),
+                ).fetchone()
+                if active:
+                    return self._serialize_review(active)
+                raise
+
+        return self.get_ai_review(review_id, user_id)
+
     def create_ai_review(
         self,
         project_id: str,
@@ -289,19 +361,360 @@ class ProjectRepository:
         provider: str = "gemini",
         model_id: str = "gemini-2.5-flash",
     ) -> Dict[str, Any]:
-        review_id = str(uuid.uuid4())
+        """Backwards-compatible alias for reserve_ai_review."""
+        return self.reserve_ai_review(project_id, user_id, provider, model_id)
+
+    def claim_queued_ai_review(
+        self,
+        worker_id: str,
+        lease_duration_sec: int = 60,
+        review_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Atomically claims the next eligible queued review (or targeted review_id) using a fenced lease token."""
         now = utc_now_iso()
+        lease_token = str(uuid.uuid4())
+        lease_expires = (datetime.now(timezone.utc) + timedelta(seconds=lease_duration_sec)).isoformat()
+
         with self.db.session() as conn:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError:
+                pass
+
+            if review_id:
+                row = conn.execute(
+                    """
+                    SELECT id, project_id, user_id, provider, model_id, attempt_count, max_attempts
+                    FROM ai_reviews
+                    WHERE id = ? AND status = 'queued'
+                    """,
+                    (review_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT id, project_id, user_id, provider, model_id, attempt_count, max_attempts
+                    FROM ai_reviews
+                    WHERE status = 'queued' AND (scheduled_at IS NULL OR scheduled_at <= ?)
+                    ORDER BY created_at ASC LIMIT 1
+                    """,
+                    (now,),
+                ).fetchone()
+
+            if not row:
+                return None
+
+            target_id = row["id"]
+            updated = conn.execute(
+                """
+                UPDATE ai_reviews
+                SET status = 'processing',
+                    worker_id = ?,
+                    lease_token = ?,
+                    lease_expires_at = ?,
+                    last_heartbeat_at = ?,
+                    attempt_count = attempt_count + 1
+                WHERE id = ? AND status = 'queued'
+                """,
+                (worker_id, lease_token, lease_expires, now, target_id),
+            )
+            if updated.rowcount == 0:
+                return None  # Claimed concurrently by another worker
+
+            claimed = conn.execute("SELECT * FROM ai_reviews WHERE id = ?", (target_id,)).fetchone()
+            return self._serialize_review(claimed)
+
+    def heartbeat_ai_review(
+        self,
+        review_id: str,
+        lease_token: str,
+        lease_duration_sec: int = 60,
+    ) -> bool:
+        """Renews the lease for an active review worker."""
+        now = utc_now_iso()
+        new_expires = (datetime.now(timezone.utc) + timedelta(seconds=lease_duration_sec)).isoformat()
+        with self.db.session() as conn:
+            cur = conn.execute(
+                """
+                UPDATE ai_reviews
+                SET last_heartbeat_at = ?, lease_expires_at = ?
+                WHERE id = ? AND lease_token = ? AND status = 'processing'
+                """,
+                (now, new_expires, review_id, lease_token),
+            )
+            return cur.rowcount > 0
+
+    def finalize_feedback_report(
+        self,
+        review_id: str,
+        project_id: str,
+        executive_summary: str,
+        strengths_summary: str,
+        findings_data: List[Dict[str, Any]],
+        worker_id: Optional[str] = None,
+        lease_token: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Atomically persists feedback report, findings, updates review to completed, and increments project counters.
+
+        Fencing Guarantee:
+        If lease_token is provided, verifies executing worker still holds active lease.
+        Idempotency Guarantee:
+        If report already exists for this review, returns existing report without double-incrementing counters.
+        """
+        report_id = str(uuid.uuid4())
+        now = utc_now_iso()
+
+        blockers = sum(1 for f in findings_data if f.get("severity") == "blocker")
+        highs = sum(1 for f in findings_data if f.get("severity") == "high")
+        mediums = sum(1 for f in findings_data if f.get("severity") == "medium")
+        lows = sum(1 for f in findings_data if f.get("severity") == "low")
+        total_findings = len(findings_data)
+
+        with self.db.session() as conn:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError:
+                pass
+
+            # 1. Fencing & Status Check
+            review_row = conn.execute(
+                "SELECT status, worker_id, lease_token FROM ai_reviews WHERE id = ?",
+                (review_id,),
+            ).fetchone()
+            if not review_row:
+                raise HTTPException(status_code=404, detail="Review session not found")
+
+            if review_row["status"] == "completed":
+                # Idempotent response if already finalized
+                existing_report = conn.execute(
+                    "SELECT id FROM feedback_reports WHERE review_id = ?",
+                    (review_id,),
+                ).fetchone()
+                if existing_report:
+                    return self.get_feedback_report(existing_report["id"])
+
+            if review_row["status"] != "processing":
+                raise StaleLeaseError(f"Review {review_id} is in status '{review_row['status']}', cannot finalize.")
+
+            if lease_token and review_row["lease_token"] and review_row["lease_token"] != lease_token:
+                raise StaleLeaseError(f"Worker lease token mismatch for review {review_id}; lease was claimed by another worker.")
+
+            # 2. Idempotency Check for Report
+            existing_rep = conn.execute("SELECT id FROM feedback_reports WHERE review_id = ?", (review_id,)).fetchone()
+            if existing_rep:
+                return self.get_feedback_report(existing_rep["id"])
+
+            # 3. Insert feedback report
             conn.execute(
                 """
-                INSERT INTO ai_reviews (
-                    id, project_id, user_id, model_id, provider,
-                    status, created_at
-                ) VALUES (?, ?, ?, ?, ?, 'queued', ?)
+                INSERT INTO feedback_reports (
+                    id, review_id, project_id, executive_summary, strengths_summary,
+                    total_findings_count, blockers_count, high_count, medium_count, low_count,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (review_id, project_id, user_id, model_id, provider, now),
+                (
+                    report_id, review_id, project_id, executive_summary, strengths_summary,
+                    total_findings, blockers, highs, mediums, lows, now,
+                ),
             )
-        return self.get_ai_review(review_id, user_id)
+
+            # 4. Bulk insert findings with default 'open' status
+            for f in findings_data:
+                finding_id = str(uuid.uuid4())
+                conn.execute(
+                    """
+                    INSERT INTO feedback_findings (
+                        id, report_id, project_id, title, severity, category,
+                        observation, evidence_quote, recommendation, status,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+                    """,
+                    (
+                        finding_id, report_id, project_id, f["title"], f["severity"],
+                        f["category"], f["observation"], f.get("evidence_quote") or f.get("evidenceQuote", ""),
+                        f["recommendation"], now, now,
+                    ),
+                )
+
+            # 5. Mark review completed atomically with fencing
+            review_update = conn.execute(
+                """
+                UPDATE ai_reviews
+                SET status = 'completed',
+                    execution_duration_ms = ?,
+                    input_token_count = ?,
+                    output_token_count = ?,
+                    completed_at = ?
+                WHERE id = ? AND status = 'processing'
+                """,
+                (duration_ms, input_tokens, output_tokens, now, review_id),
+            )
+            if review_update.rowcount == 0:
+                raise StaleLeaseError(f"Failed to transition review {review_id} to completed; state changed concurrently.")
+
+            # 6. Update project status and increment review counter exactly once
+            conn.execute(
+                """
+                UPDATE projects
+                SET status = 'reviewed', reviews_count = reviews_count + 1, updated_at = ?
+                WHERE id = ?
+                """,
+                (now, project_id),
+            )
+
+        return self.get_feedback_report(report_id)
+
+    def fail_ai_review(
+        self,
+        review_id: str,
+        project_id: str,
+        error_message: str,
+        worker_id: Optional[str] = None,
+        lease_token: Optional[str] = None,
+        is_terminal: bool = True,
+        duration_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Atomically records a review failure and coordinates retry or project state recovery."""
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError:
+                pass
+
+            if is_terminal:
+                conn.execute(
+                    """
+                    UPDATE ai_reviews
+                    SET status = 'failed',
+                        error_message = ?,
+                        execution_duration_ms = ?,
+                        completed_at = ?
+                    WHERE id = ?
+                    """,
+                    (error_message, duration_ms, now, review_id),
+                )
+                # Check if any other active review exists for project
+                other_active = conn.execute(
+                    """
+                    SELECT count(*) as cnt FROM ai_reviews
+                    WHERE project_id = ? AND status IN ('queued', 'processing') AND id != ?
+                    """,
+                    (project_id, review_id),
+                ).fetchone()["cnt"]
+                if other_active == 0:
+                    conn.execute(
+                        "UPDATE projects SET status = 'ready', updated_at = ? WHERE id = ?",
+                        (now, project_id),
+                    )
+            else:
+                # Calculate exponential backoff
+                row = conn.execute("SELECT attempt_count FROM ai_reviews WHERE id = ?", (review_id,)).fetchone()
+                attempts = (row["attempt_count"] if row else 1)
+                backoff_sec = min(300, (2 ** attempts) * 5)
+                scheduled_at = (datetime.now(timezone.utc) + timedelta(seconds=backoff_sec)).isoformat()
+                conn.execute(
+                    """
+                    UPDATE ai_reviews
+                    SET status = 'queued',
+                        worker_id = NULL,
+                        lease_token = NULL,
+                        scheduled_at = ?,
+                        error_message = ?
+                    WHERE id = ?
+                    """,
+                    (scheduled_at, error_message, review_id),
+                )
+
+        return self.get_ai_review(review_id)
+
+    def recover_stale_reviews(self) -> List[Dict[str, Any]]:
+        """Scans for abandoned reviews with expired leases and either schedules retry or terminally fails them."""
+        now = utc_now_iso()
+        recovered = []
+        with self.db.session() as conn:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError:
+                pass
+
+            # 1. Processing reviews whose lease expired
+            stale_rows = conn.execute(
+                """
+                SELECT id, project_id, attempt_count, max_attempts
+                FROM ai_reviews
+                WHERE status = 'processing' AND lease_expires_at IS NOT NULL AND lease_expires_at < ?
+                """,
+                (now,),
+            ).fetchall()
+
+            for row in stale_rows:
+                review_id = row["id"]
+                project_id = row["project_id"]
+                attempts = row["attempt_count"] or 0
+                max_attempts = row["max_attempts"] or 3
+
+                if attempts < max_attempts:
+                    # Exponential backoff retry
+                    backoff_sec = min(300, (2 ** attempts) * 5)
+                    scheduled_at = (datetime.now(timezone.utc) + timedelta(seconds=backoff_sec)).isoformat()
+                    conn.execute(
+                        """
+                        UPDATE ai_reviews
+                        SET status = 'queued',
+                            worker_id = NULL,
+                            lease_token = NULL,
+                            scheduled_at = ?,
+                            error_message = 'Worker lease expired; re-queued for recovery'
+                        WHERE id = ? AND status = 'processing'
+                        """,
+                        (scheduled_at, review_id),
+                    )
+                    recovered.append({"id": review_id, "action": "requeued", "attempt": attempts})
+                else:
+                    # Terminal failure
+                    conn.execute(
+                        """
+                        UPDATE ai_reviews
+                        SET status = 'failed',
+                            error_message = 'Execution lease expired and maximum retry attempts exhausted',
+                            completed_at = ?
+                        WHERE id = ? AND status = 'processing'
+                        """,
+                        (now, review_id),
+                    )
+                    # Reset project if no other active review
+                    other_active = conn.execute(
+                        "SELECT count(*) as cnt FROM ai_reviews WHERE project_id = ? AND status IN ('queued', 'processing') AND id != ?",
+                        (project_id, review_id),
+                    ).fetchone()["cnt"]
+                    if other_active == 0:
+                        conn.execute(
+                            "UPDATE projects SET status = 'ready', updated_at = ? WHERE id = ?",
+                            (now, project_id),
+                        )
+                    recovered.append({"id": review_id, "action": "terminal_fail", "attempt": attempts})
+
+            # 2. Orphaned projects stuck in in_review with no active review session
+            stuck_projects = conn.execute(
+                """
+                SELECT p.id FROM projects p
+                WHERE p.status = 'in_review'
+                AND NOT EXISTS (
+                    SELECT 1 FROM ai_reviews r
+                    WHERE r.project_id = p.id AND r.status IN ('queued', 'processing')
+                )
+                """
+            ).fetchall()
+            for p in stuck_projects:
+                conn.execute("UPDATE projects SET status = 'ready', updated_at = ? WHERE id = ?", (now, p["id"]))
+                recovered.append({"projectId": p["id"], "action": "reset_project_status"})
+
+        return recovered
 
     def get_active_ai_review(self, project_id: str) -> Optional[Dict[str, Any]]:
         with self.db.session() as conn:
@@ -354,7 +767,7 @@ class ProjectRepository:
             ).fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Review session not found")
-            if not row["project_is_public"] and row["project_owner_id"] != requesting_user_id:
+            if requesting_user_id is not None and not row["project_is_public"] and row["project_owner_id"] != requesting_user_id:
                 raise HTTPException(status_code=403, detail="Access denied: Review belongs to a private project")
             return self._serialize_review(row)
 
@@ -376,60 +789,14 @@ class ProjectRepository:
         strengths_summary: str,
         findings_data: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        report_id = str(uuid.uuid4())
-        now = utc_now_iso()
-
-        blockers = sum(1 for f in findings_data if f.get("severity") == "blocker")
-        highs = sum(1 for f in findings_data if f.get("severity") == "high")
-        mediums = sum(1 for f in findings_data if f.get("severity") == "medium")
-        lows = sum(1 for f in findings_data if f.get("severity") == "low")
-        total_findings = len(findings_data)
-
-        with self.db.session() as conn:
-            # 1. Insert report
-            conn.execute(
-                """
-                INSERT INTO feedback_reports (
-                    id, review_id, project_id, executive_summary, strengths_summary,
-                    total_findings_count, blockers_count, high_count, medium_count, low_count,
-                    created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    report_id, review_id, project_id, executive_summary, strengths_summary,
-                    total_findings, blockers, highs, mediums, lows, now
-                ),
-            )
-
-            # 2. Insert findings
-            for f in findings_data:
-                finding_id = str(uuid.uuid4())
-                conn.execute(
-                    """
-                    INSERT INTO feedback_findings (
-                        id, report_id, project_id, title, severity, category,
-                        observation, evidence_quote, recommendation, status,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
-                    """,
-                    (
-                        finding_id, report_id, project_id, f["title"], f["severity"],
-                        f["category"], f["observation"], f.get("evidence_quote") or f.get("evidenceQuote", ""),
-                        f["recommendation"], now, now
-                    ),
-                )
-
-            # 3. Update project status and increment reviews_count
-            conn.execute(
-                """
-                UPDATE projects
-                SET status = 'reviewed', reviews_count = reviews_count + 1, updated_at = ?
-                WHERE id = ?
-                """,
-                (now, project_id),
-            )
-
-        return self.get_feedback_report(report_id)
+        """Backwards-compatible wrapper delegating to finalize_feedback_report."""
+        return self.finalize_feedback_report(
+            review_id=review_id,
+            project_id=project_id,
+            executive_summary=executive_summary,
+            strengths_summary=strengths_summary,
+            findings_data=findings_data,
+        )
 
     def get_feedback_report(self, report_id: str) -> Dict[str, Any]:
         with self.db.session() as conn:
@@ -626,6 +993,7 @@ class ProjectRepository:
 
 
     def _serialize_review(self, row: sqlite3.Row) -> Dict[str, Any]:
+        keys = row.keys()
         return {
             "id": row["id"],
             "projectId": row["project_id"],
@@ -635,8 +1003,15 @@ class ProjectRepository:
             "status": row["status"],
             "errorMessage": row["error_message"],
             "executionDurationMs": row["execution_duration_ms"],
-            "inputTokenCount": row["input_token_count"] if "input_token_count" in row.keys() else None,
-            "outputTokenCount": row["output_token_count"] if "output_token_count" in row.keys() else None,
+            "inputTokenCount": row["input_token_count"] if "input_token_count" in keys else None,
+            "outputTokenCount": row["output_token_count"] if "output_token_count" in keys else None,
+            "workerId": row["worker_id"] if "worker_id" in keys else None,
+            "leaseToken": row["lease_token"] if "lease_token" in keys else None,
+            "leaseExpiresAt": row["lease_expires_at"] if "lease_expires_at" in keys else None,
+            "lastHeartbeatAt": row["last_heartbeat_at"] if "last_heartbeat_at" in keys else None,
+            "attemptCount": row["attempt_count"] if "attempt_count" in keys else 0,
+            "maxAttempts": row["max_attempts"] if "max_attempts" in keys else 3,
+            "scheduledAt": row["scheduled_at"] if "scheduled_at" in keys else None,
             "createdAt": row["created_at"],
             "completedAt": row["completed_at"],
         }

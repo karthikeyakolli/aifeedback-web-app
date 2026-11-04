@@ -21,7 +21,7 @@ from backend.app.schemas.ai import (
 from backend.app.services.analysis_service import flatten_comments_tree
 from backend.app.services.gemini_service import LLMProvider, get_ai_provider
 from backend.app.services.retrieval_service import retrieve_evidence
-from backend.app.services.text_cleaner import clean_input_text, sanitize_research_proposal
+from backend.app.services.text_cleaner import clean_input_text, sanitize_research_proposal, clean_evidence_quote
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,9 @@ class ResearchChatService:
 
     def list_sessions(self, post_id: str, user_id: str) -> List[ChatSessionResponse]:
         """Lists all research chat sessions belonging to the user for the given post."""
-        self._verify_post_owner(post_id=post_id, user_id=user_id)
+        post = community_repo.get_post(post_id)
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found.")
         sessions = community_repo.list_chat_sessions(post_id=post_id, user_id=user_id)
         return [ChatSessionResponse.model_validate(s) for s in sessions]
 
@@ -295,18 +297,19 @@ class ResearchChatService:
                     author_obj = c_row.get("author", {}) if isinstance(c_row.get("author"), dict) else {}
                     author_display = author_obj.get("displayName") or author_obj.get("username") or "Contributor"
 
-                content_text = clean_input_text(c_row.get("content", ""))
-                quote = (content_text[:120] + "...") if len(content_text) > 120 else content_text
+                content_text = c_row.get("content", "")
+                raw_quote = content_text[:160] + ("..." if len(content_text) > 160 else "")
+                quote = clean_evidence_quote(raw_quote)
 
                 validated_citations.append(
                     CitationRecord(
                         commentId=cid,
                         quoteSnippet=quote,
-                        authorDisplay=clean_input_text(author_display),
+                        authorDisplay=clean_evidence_quote(author_display),
                         sourceType=c_row.get("sourceType", "comment"),
                         filename=c_row.get("filename"),
                         pageNumber=c_row.get("pageNumber"),
-                        section=c_row.get("section"),
+                        section=clean_evidence_quote(c_row.get("section")) if c_row.get("section") else None,
                     )
                 )
 

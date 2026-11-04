@@ -459,6 +459,251 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_projects_public ON projects(category, created_at DESC) WHERE is_public = 1;
             CREATE INDEX IF NOT EXISTS idx_feedback_findings_rep ON feedback_findings(report_id, severity);
             CREATE INDEX IF NOT EXISTS idx_feedback_findings_proj ON feedback_findings(project_id, status);
+
+            -- Phase 2 Partial Unique Index: Concurrency-Safe Active AI Review Reservation
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_ai_review ON ai_reviews(project_id) WHERE status IN ('queued', 'processing');
+
+            -- Phase 3 Unified Identity, Account Linking, and MFA Tables
+            CREATE TABLE IF NOT EXISTS user_identities (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                provider TEXT NOT NULL CHECK (provider IN ('email', 'google', 'github')),
+                provider_subject TEXT NOT NULL,
+                email TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(provider, provider_subject),
+                FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS user_mfa (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL UNIQUE,
+                factor_type TEXT NOT NULL DEFAULT 'totp' CHECK (factor_type IN ('totp', 'recovery_code')),
+                secret_encrypted TEXT NOT NULL,
+                is_enabled INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+            );
+
+            -- Phase 3 Server-Side Encrypted BYOK Credential Vault
+            CREATE TABLE IF NOT EXISTS user_credentials (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                provider TEXT NOT NULL CHECK (provider IN ('gemini', 'groq', 'nvidia', 'openrouter')),
+                display_name TEXT NOT NULL,
+                encrypted_secret TEXT NOT NULL,
+                key_version TEXT NOT NULL DEFAULT 'v1',
+                masked_preview TEXT NOT NULL,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                validation_status TEXT NOT NULL DEFAULT 'unverified' CHECK (validation_status IN ('unverified', 'valid', 'invalid', 'rate_limited')),
+                last_tested_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, provider, display_name),
+                FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_user_credentials_user ON user_credentials(user_id);
+            CREATE INDEX IF NOT EXISTS idx_user_credentials_provider ON user_credentials(user_id, provider);
+            CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities(user_id);
+
+            -- Phase 3 Password Reset Tokens (Secure One-Time Token Store)
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+
+            -- Phase 4: Project Source Ingestion & Snapshots
+            CREATE TABLE IF NOT EXISTS project_sources (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                owner_id TEXT NOT NULL,
+                source_type TEXT NOT NULL CHECK (source_type IN ('file', 'archive', 'github_repo', 'gitlab_repo', 'spec_doc', 'screenshot')),
+                name TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                file_size INTEGER NOT NULL DEFAULT 0,
+                mime_type TEXT NOT NULL DEFAULT 'text/plain',
+                storage_path TEXT NOT NULL DEFAULT '',
+                content_text TEXT NOT NULL DEFAULT '',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                version INTEGER NOT NULL DEFAULT 1,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_sources_proj ON project_sources(project_id, is_active, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS project_source_snapshots (
+                id TEXT PRIMARY KEY,
+                review_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                snapshot_data_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (review_id) REFERENCES ai_reviews(id) ON DELETE CASCADE,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_source_snapshots_rev ON project_source_snapshots(review_id);
+
+            -- Phase 5: Advanced RAG Knowledge Base
+            CREATE TABLE IF NOT EXISTS project_knowledge_chunks (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                clean_content TEXT NOT NULL,
+                token_count INTEGER NOT NULL DEFAULT 0,
+                embedding_vector TEXT NOT NULL DEFAULT '[]',
+                page_number INTEGER,
+                section_heading TEXT,
+                line_start INTEGER,
+                line_end INTEGER,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (source_id) REFERENCES project_sources(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_proj_kb_chunks_proj ON project_knowledge_chunks(project_id);
+            CREATE INDEX IF NOT EXISTS idx_proj_kb_chunks_source ON project_knowledge_chunks(source_id);
+
+            CREATE TABLE IF NOT EXISTS reference_knowledge_chunks (
+                id TEXT PRIMARY KEY,
+                category TEXT NOT NULL CHECK (category IN ('architecture', 'ux', 'performance', 'security', 'accessibility', 'general')),
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                clean_content TEXT NOT NULL,
+                embedding_vector TEXT NOT NULL DEFAULT '[]',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ref_kb_chunks_cat ON reference_knowledge_chunks(category);
+
+            -- Phase 6: AI Provider Orchestration & Usage Ledger
+            CREATE TABLE IF NOT EXISTS project_provider_configs (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                task_type TEXT NOT NULL CHECK (task_type IN ('review', 'chat', 'completeness_map', 'verification')),
+                primary_provider TEXT NOT NULL CHECK (primary_provider IN ('gemini', 'openrouter', 'nvidia', 'groq', 'deterministic')),
+                fallback_provider TEXT CHECK (fallback_provider IN ('gemini', 'openrouter', 'nvidia', 'groq', 'deterministic')),
+                model_override TEXT,
+                temperature REAL NOT NULL DEFAULT 0.2,
+                max_tokens INTEGER NOT NULL DEFAULT 4096,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, task_type),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_proj_prov_cfg_proj ON project_provider_configs(project_id);
+
+            CREATE TABLE IF NOT EXISTS ai_usage_ledger (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                project_id TEXT,
+                review_id TEXT,
+                provider TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                completion_tokens INTEGER NOT NULL DEFAULT 0,
+                estimated_cost_usd REAL NOT NULL DEFAULT 0.0,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'success',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ai_usage_user ON ai_usage_ledger(user_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_ai_usage_project ON ai_usage_ledger(project_id);
+
+            -- Phase 7 & 8: Product Completeness Map & Decisions
+            CREATE TABLE IF NOT EXISTS product_completeness_nodes (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                node_type TEXT NOT NULL CHECK (node_type IN ('goal', 'problem', 'persona', 'journey', 'feature', 'requirement', 'screen', 'api', 'database_entity', 'security_policy', 'test_spec')),
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'complete' CHECK (status IN ('complete', 'incomplete', 'missing', 'contradictory')),
+                confidence_score REAL NOT NULL DEFAULT 1.0,
+                source_chunk_ids_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_prod_nodes_proj ON product_completeness_nodes(project_id, node_type);
+
+            CREATE TABLE IF NOT EXISTS product_completeness_edges (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                source_node_id TEXT NOT NULL,
+                target_node_id TEXT NOT NULL,
+                relationship_type TEXT NOT NULL CHECK (relationship_type IN ('addresses', 'depends_on', 'implements', 'verifies', 'conflicts_with')),
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_prod_edges_proj ON product_completeness_edges(project_id);
+
+            CREATE TABLE IF NOT EXISTS product_decisions (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                node_id TEXT NOT NULL,
+                decision_type TEXT NOT NULL CHECK (decision_type IN ('approved', 'dismissed', 'deferred', 'custom')),
+                rationale TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_prod_decisions_proj ON product_decisions(project_id);
+
+            -- Phase 9: Project Chat & Improvement Tasks
+            CREATE TABLE IF NOT EXISTS project_chats (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                chat_scope TEXT NOT NULL DEFAULT 'project_wide' CHECK (chat_scope IN ('project_wide', 'review_specific', 'finding_specific')),
+                target_review_id TEXT,
+                target_finding_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_chats_proj ON project_chats(project_id, user_id, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS project_chat_messages (
+                id TEXT PRIMARY KEY,
+                chat_id TEXT NOT NULL,
+                role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+                content TEXT NOT NULL,
+                citations_json TEXT NOT NULL DEFAULT '[]',
+                classification TEXT NOT NULL DEFAULT 'general' CHECK (classification IN ('decision', 'question', 'clarification', 'code_generation', 'general')),
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (chat_id) REFERENCES project_chats(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_chat_messages_chat ON project_chat_messages(chat_id, created_at ASC);
+
+            CREATE TABLE IF NOT EXISTS improvement_tasks (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                finding_id TEXT,
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                action_type TEXT NOT NULL DEFAULT 'accept' CHECK (action_type IN ('accept', 'edit', 'reject', 'defer')),
+                status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'completed', 'verified')),
+                verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN ('unverified', 'passed', 'failed')),
+                verification_feedback TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_improvement_tasks_proj ON improvement_tasks(project_id, status);
             """)
 
             # Upgrade conversation_sessions review_id column if not present
@@ -466,6 +711,27 @@ class DatabaseManager:
             conv_cols = [r[1] for r in cur.execute("PRAGMA table_info(conversation_sessions)").fetchall()]
             if "review_id" not in conv_cols:
                 conn.execute("ALTER TABLE conversation_sessions ADD COLUMN review_id TEXT;")
+
+            # Upgrade ai_reviews with worker lease & durable queue columns (Phase 2)
+            review_cols = [r[1] for r in cur.execute("PRAGMA table_info(ai_reviews)").fetchall()]
+            if "worker_id" not in review_cols:
+                conn.execute("ALTER TABLE ai_reviews ADD COLUMN worker_id TEXT;")
+            if "lease_token" not in review_cols:
+                conn.execute("ALTER TABLE ai_reviews ADD COLUMN lease_token TEXT;")
+            if "lease_expires_at" not in review_cols:
+                conn.execute("ALTER TABLE ai_reviews ADD COLUMN lease_expires_at TEXT;")
+            if "last_heartbeat_at" not in review_cols:
+                conn.execute("ALTER TABLE ai_reviews ADD COLUMN last_heartbeat_at TEXT;")
+            if "attempt_count" not in review_cols:
+                conn.execute("ALTER TABLE ai_reviews ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;")
+            if "max_attempts" not in review_cols:
+                conn.execute("ALTER TABLE ai_reviews ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3;")
+            if "scheduled_at" not in review_cols:
+                conn.execute("ALTER TABLE ai_reviews ADD COLUMN scheduled_at TEXT;")
+
+            # Create queue & recovery indexes after ensuring columns exist
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reviews_worker_claim ON ai_reviews(status, scheduled_at, created_at);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_reviews_stale_recovery ON ai_reviews(status, lease_expires_at);")
             tbl_info = cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='research_reports'").fetchone()
             if tbl_info and tbl_info[0] and "improvement_roadmap" not in tbl_info[0]:
                 conn.execute("PRAGMA foreign_keys = OFF;")
