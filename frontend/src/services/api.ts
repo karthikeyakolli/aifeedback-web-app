@@ -50,6 +50,9 @@ import type {
   ProjectChatMessage,
   ImprovementTask,
   GuidedDiscoveryQuestion,
+  FindingEvidenceCitation,
+  AIBudget,
+  BudgetUpdatePayload,
 } from '../types';
 import { mockPosts, mockComments } from '../fixtures/mockData';
 
@@ -1979,6 +1982,55 @@ export const api = {
     if (!res.ok) throw new Error('Failed to run task verification');
     return res.json();
   },
+  async getFindingCitations(findingId: string): Promise<FindingEvidenceCitation[]> {
+    try {
+      const res = await fetch(`${API_BASE}/findings/${findingId}/citations`, {
+        headers: getHeaders(true),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return [];
+  },
+
+  async getProjectSnapshot(projectId: string, snapshotId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/snapshots/${snapshotId}`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) throw new Error('Failed to retrieve project snapshot');
+    return res.json();
+  },
+
+  async getBudgets(): Promise<AIBudget[]> {
+    const res = await fetch(`${API_BASE}/budgets`, {
+      headers: getHeaders(true),
+    });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  async getAccountBudget(): Promise<AIBudget | null> {
+    try {
+      const res = await fetch(`${API_BASE}/budgets/account`, {
+        headers: getHeaders(true),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async updateBudget(payload: BudgetUpdatePayload): Promise<AIBudget> {
+    const res = await fetch(`${API_BASE}/budgets`, {
+      method: 'PUT',
+      headers: getHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update budget' }));
+      throw new Error(err.detail || 'Failed to update budget');
+    }
+    return res.json();
+  },
 };
+
 
 

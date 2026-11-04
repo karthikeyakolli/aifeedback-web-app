@@ -17,6 +17,10 @@ import {
   Search,
   X,
   ArrowRight,
+  FileText,
+  Hash,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import type {
@@ -24,6 +28,7 @@ import type {
   FeedbackReport,
   AIReviewStatus,
   FeedbackReportComparison,
+  FindingEvidenceCitation,
 } from '../../types';
 import { Button } from '../common/Button';
 import { cn } from '../../lib/utils';
@@ -74,6 +79,28 @@ export const ProjectReviewTab: React.FC<ProjectReviewTabProps> = ({
   const [severityFilter, setSeverityFilter] = useState<'all' | 'blocker' | 'high' | 'medium' | 'low'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'addressed'>('all');
   const [updatingFindingId, setUpdatingFindingId] = useState<string | null>(null);
+
+  // Citations inspection state
+  const [expandedCitationFindingIds, setExpandedCitationFindingIds] = useState<Record<string, boolean>>({});
+  const [citationCache, setCitationCache] = useState<Record<string, FindingEvidenceCitation[]>>({});
+  const [loadingCitationsFindingId, setLoadingCitationsFindingId] = useState<string | null>(null);
+
+  const toggleCitations = async (findingId: string) => {
+    const isExpanded = !expandedCitationFindingIds[findingId];
+    setExpandedCitationFindingIds(prev => ({ ...prev, [findingId]: isExpanded }));
+
+    if (isExpanded && !citationCache[findingId]) {
+      setLoadingCitationsFindingId(findingId);
+      try {
+        const citations = await api.getFindingCitations(findingId);
+        setCitationCache(prev => ({ ...prev, [findingId]: citations }));
+      } catch (err) {
+        console.error('Failed to load citations for finding:', err);
+      } finally {
+        setLoadingCitationsFindingId(null);
+      }
+    }
+  };
 
   // Real elapsed timer for active review
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -938,6 +965,118 @@ export const ProjectReviewTab: React.FC<ProjectReviewTabProps> = ({
                           </div>
                         </div>
                       )}
+
+                      {/* Traceable Evidence Coordinates & Citation Metadata */}
+                      <div className="pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleCitations(finding.id)}
+                          className="flex items-center gap-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          <Hash className="w-3 h-3" />
+                          <span>
+                            {expandedCitationFindingIds[finding.id]
+                              ? 'Hide Traceable Citations'
+                              : 'Trace Evidence Citations (Source, Lines, Hash)'}
+                          </span>
+                          {expandedCitationFindingIds[finding.id] ? (
+                            <ChevronUp className="w-3 h-3" />
+                          ) : (
+                            <ChevronDown className="w-3 h-3" />
+                          )}
+                        </button>
+
+                        {expandedCitationFindingIds[finding.id] && (
+                          <div className="mt-2 p-3 rounded-xl bg-[var(--surface-raised)] border border-[var(--border-default)] space-y-2">
+                            <div className="flex items-center justify-between text-[10px] font-bold uppercase text-[var(--text-muted)] tracking-wider">
+                              <span className="flex items-center gap-1">
+                                <FileText className="w-3 h-3" /> Traceable Provenance Coordinates
+                              </span>
+                              {loadingCitationsFindingId === finding.id && (
+                                <span className="text-blue-500 animate-pulse">Loading citations...</span>
+                              )}
+                            </div>
+
+                            {(() => {
+                              const citations = (finding.citations && finding.citations.length > 0)
+                                ? finding.citations
+                                : (citationCache[finding.id] || []);
+
+                              if (citations.length === 0 && loadingCitationsFindingId !== finding.id) {
+                                return (
+                                  <p className="text-[11px] text-[var(--text-muted)] italic">
+                                    No granular line coordinates indexed for this finding.
+                                  </p>
+                                );
+                              }
+
+                              return (
+                                <div className="space-y-2">
+                                  {citations.map((c, idx) => {
+                                    const sourceId = c.sourceId || c.source_id || 'source_unknown';
+                                    const snapshotId = c.snapshotId || c.snapshot_id;
+                                    const lineStart = c.lineStart ?? c.line_start;
+                                    const lineEnd = c.lineEnd ?? c.line_end;
+                                    const charStart = c.charOffsetStart ?? c.char_offset_start;
+                                    const charEnd = c.charOffsetEnd ?? c.char_offset_end;
+                                    const pageNum = c.pageNumber ?? c.page_number;
+                                    const quoteHash = c.contentHash || c.content_hash;
+                                    const validation = c.validationResult || c.validation_result || 'exact_match';
+                                    const quote = c.canonicalQuote || c.canonical_quote;
+
+                                    return (
+                                      <div
+                                        key={c.id || idx}
+                                        className="p-2.5 rounded-lg bg-[var(--surface)] border border-[var(--border-default)] text-xs space-y-1.5 font-mono"
+                                      >
+                                        <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                          <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold">
+                                            src: {sourceId.length > 16 ? sourceId.slice(0, 16) + '...' : sourceId}
+                                          </span>
+                                          {snapshotId && (
+                                            <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold">
+                                              snap: {snapshotId.slice(0, 8)}
+                                            </span>
+                                          )}
+                                          {lineStart !== null && lineStart !== undefined && (
+                                            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold">
+                                              L{lineStart}{lineEnd && lineEnd !== lineStart ? `-L${lineEnd}` : ''}
+                                            </span>
+                                          )}
+                                          {charStart !== null && charStart !== undefined && (
+                                            <span className="px-1.5 py-0.5 rounded bg-neutral-500/10 text-[var(--text-muted)]">
+                                              chars {charStart}..{charEnd}
+                                            </span>
+                                          )}
+                                          {pageNum && (
+                                            <span className="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold">
+                                              p.{pageNum}
+                                            </span>
+                                          )}
+                                          {quoteHash && (
+                                            <span className="px-1.5 py-0.5 rounded bg-neutral-500/10 text-[var(--text-muted)]">
+                                              hash: {quoteHash.slice(0, 8)}
+                                            </span>
+                                          )}
+                                          <span className="ml-auto px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold uppercase text-[9px]">
+                                            {validation}
+                                          </span>
+                                        </div>
+
+                                        {quote && (
+                                          <p className="text-[11px] text-[var(--text-secondary)] italic border-l-2 border-blue-500/30 pl-2">
+                                            "{quote}"
+                                          </p>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
 
                       {/* Actionable Recommendation */}
                       <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-1">

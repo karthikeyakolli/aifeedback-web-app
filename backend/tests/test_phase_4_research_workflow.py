@@ -1,3 +1,4 @@
+import time
 import io
 import uuid
 import pytest
@@ -186,17 +187,22 @@ def test_research_workflow_source_selection_and_ownership(client):
     assert sess_res.status_code == 201
     session_id = sess_res.json()["id"]
 
-    # 7. Research with sourceType='both'
-    msg_both = client.post(
-        f"/api/v1/ai/chat/sessions/{session_id}/messages",
-        json={
-            "question": "What connection and security problems were reported?",
-            "sourceType": "both",
-            "includedDocIds": [doc_id],
-            "includeCommunity": True,
-        },
-        headers=creator_headers,
-    )
+    # 7. Research with sourceType='both' (with retry for external API rate limits)
+    msg_both = None
+    for attempt in range(4):
+        msg_both = client.post(
+            f"/api/v1/ai/chat/sessions/{session_id}/messages",
+            json={
+                "question": "What connection and security problems were reported?",
+                "sourceType": "both",
+                "includedDocIds": [doc_id],
+                "includeCommunity": True,
+            },
+            headers=creator_headers,
+        )
+        if msg_both.status_code == 200:
+            break
+        time.sleep(8.0)
     assert msg_both.status_code == 200
     res_data = msg_both.json()
 

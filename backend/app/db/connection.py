@@ -103,6 +103,16 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def ping(self) -> bool:
+        """Tests live database connectivity with quick timeout. Returns True if responsive."""
+        try:
+            with self.session() as conn:
+                res = conn.execute("SELECT 1").fetchone()
+                return bool(res)
+        except Exception as exc:
+            logger.error("Database ping failed: %s", exc)
+            return False
+
     def init_db(self) -> None:
         """Executes initial schema definition."""
         with self.session() as conn:

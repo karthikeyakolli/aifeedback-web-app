@@ -703,6 +703,37 @@ export interface ProjectUpdatePayload {
   isPublic?: boolean;
 }
 
+export interface FindingEvidenceCitation {
+  id: string;
+  findingId?: string;
+  sourceId?: string;
+  snapshotId?: string;
+  chunkId?: string;
+  pageNumber?: number | null;
+  lineStart?: number | null;
+  lineEnd?: number | null;
+  charOffsetStart?: number | null;
+  charOffsetEnd?: number | null;
+  canonicalQuote?: string;
+  contentHash?: string;
+  validationResult?: 'exact_match' | 'fuzzy_match' | 'hash_verified' | 'unverified';
+  createdAt?: string;
+  // Fallbacks for direct snake_case properties
+  finding_id?: string;
+  source_id?: string;
+  snapshot_id?: string;
+  chunk_id?: string;
+  page_number?: number | null;
+  line_start?: number | null;
+  line_end?: number | null;
+  char_offset_start?: number | null;
+  char_offset_end?: number | null;
+  canonical_quote?: string;
+  content_hash?: string;
+  validation_result?: 'exact_match' | 'fuzzy_match' | 'hash_verified' | 'unverified';
+  created_at?: string;
+}
+
 export interface FeedbackFinding {
   id: string;
   reportId: string;
@@ -715,6 +746,7 @@ export interface FeedbackFinding {
   recommendation: string;
   status: 'open' | 'in_progress' | 'addressed';
   resolvedAt?: string | null;
+  citations?: FindingEvidenceCitation[];
   createdAt: string;
   updatedAt?: string;
 }
@@ -1131,7 +1163,27 @@ export interface GuidedDiscoveryQuestion {
   recommended: string;
 }
 
+export interface AIBudget {
+  id: string;
+  userId: string;
+  projectId?: string | null;
+  scope: 'account' | 'project' | 'task';
+  monthlyLimitUsd: number;
+  currentPeriodSpendUsd: number;
+  reservedSpendUsd: number;
+  warningThresholdPct: number;
+  percentageUsed: number;
+  isWarningActive: boolean;
+  hardStopEnabled: boolean;
+  currentPeriodStart: string;
+  updatedAt: string;
+}
 
-
-
+export interface BudgetUpdatePayload {
+  scope?: 'account' | 'project' | 'task';
+  projectId?: string | null;
+  monthlyLimitUsd: number;
+  warningThresholdPct?: number;
+  hardStopEnabled?: boolean;
+}
 
