@@ -1,12 +1,16 @@
 """Relational Repository for Projects, Attachments, and AI Feedback Reports."""
 
 from __future__ import annotations
+import hashlib
+import logging
 import uuid
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException, status
 from backend.app.db.connection import db_manager
+
+logger = logging.getLogger(__name__)
 
 
 class StaleLeaseError(RuntimeError):
@@ -522,9 +526,15 @@ class ProjectRepository:
                 ),
             )
 
-            # 4. Bulk insert findings with default 'open' status
+            # 4. Bulk insert findings with default 'open' status and record evidence citations
+            snap_row = conn.execute("SELECT id FROM project_source_snapshots WHERE review_id = ? LIMIT 1", (review_id,)).fetchone()
+            snapshot_id = snap_row["id"] if snap_row else None
+            src_row = conn.execute("SELECT id FROM project_sources WHERE project_id = ? AND is_active = 1 LIMIT 1", (project_id,)).fetchone()
+            active_src_id = src_row["id"] if src_row else None
+
             for f in findings_data:
                 finding_id = str(uuid.uuid4())
+                evidence_q = f.get("evidence_quote") or f.get("evidenceQuote", "")
                 conn.execute(
                     """
                     INSERT INTO feedback_findings (
@@ -535,10 +545,25 @@ class ProjectRepository:
                     """,
                     (
                         finding_id, report_id, project_id, f["title"], f["severity"],
-                        f["category"], f["observation"], f.get("evidence_quote") or f.get("evidenceQuote", ""),
+                        f["category"], f["observation"], evidence_q,
                         f["recommendation"], now, now,
                     ),
                 )
+
+                if evidence_q:
+                    cit_id = f"cit_{uuid.uuid4().hex[:12]}"
+                    c_hash = hashlib.sha256(evidence_q.encode("utf-8")).hexdigest()
+                    try:
+                        conn.execute(
+                            """
+                            INSERT INTO finding_evidence_citations (
+                                id, finding_id, source_id, snapshot_id, canonical_quote, content_hash, validation_result, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, 'valid', ?)
+                            """,
+                            (cit_id, finding_id, active_src_id, snapshot_id, evidence_q, c_hash, now),
+                        )
+                    except Exception as cit_err:
+                        logger.warning("Failed to record finding_evidence_citations: %s", cit_err)
 
             # 5. Mark review completed atomically with fencing
             review_update = conn.execute(

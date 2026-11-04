@@ -74,27 +74,51 @@ export const ProjectCompletenessTab: React.FC<ProjectCompletenessTabProps> = ({ 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'complete':
+      case 'evidenced_present':
+      case 'verified_complete':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-bold">
-            <CheckCircle2 className="w-3 h-3" /> Complete
+            <CheckCircle2 className="w-3 h-3" /> {status === 'verified_complete' ? 'Verified Complete' : status === 'evidenced_present' ? 'Evidenced Present' : 'Complete'}
+          </span>
+        );
+      case 'partially_evidenced':
+      case 'specified_not_verified':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 font-mono text-[10px] font-bold">
+            <Clock className="w-3 h-3" /> {status === 'partially_evidenced' ? 'Partially Evidenced' : 'Specified Unverified'}
           </span>
         );
       case 'incomplete':
+      case 'not_verified':
+      case 'awaiting_author_decision':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-bold">
-            <Clock className="w-3 h-3" /> Incomplete
+            <Clock className="w-3 h-3" /> {status === 'awaiting_author_decision' ? 'Awaiting Decision' : status === 'not_verified' ? 'Not Verified' : 'Incomplete'}
           </span>
         );
       case 'missing':
+      case 'not_provided':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono text-[10px] font-bold">
-            <XCircle className="w-3 h-3" /> Missing Spec
+            <XCircle className="w-3 h-3" /> {status === 'not_provided' ? 'Not Provided' : 'Missing Spec'}
           </span>
         );
       case 'contradictory':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 font-mono text-[10px] font-bold">
             <AlertTriangle className="w-3 h-3" /> Contradiction
+          </span>
+        );
+      case 'unclear':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 font-mono text-[10px] font-bold">
+            <AlertCircle className="w-3 h-3" /> Unclear Spec
+          </span>
+        );
+      case 'not_applicable':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-500 font-mono text-[10px]">
+            N/A
           </span>
         );
       default:

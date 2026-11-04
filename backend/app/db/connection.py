@@ -524,7 +524,7 @@ class DatabaseManager:
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
                 owner_id TEXT NOT NULL,
-                source_type TEXT NOT NULL CHECK (source_type IN ('file', 'archive', 'github_repo', 'gitlab_repo', 'spec_doc', 'screenshot')),
+                source_type TEXT NOT NULL CHECK (source_type IN ('file', 'archive', 'github_repo', 'gitlab_repo', 'spec_doc', 'screenshot', 'diagram', 'design_link', 'chat')),
                 name TEXT NOT NULL,
                 original_filename TEXT NOT NULL,
                 file_size INTEGER NOT NULL DEFAULT 0,
@@ -625,10 +625,10 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS product_completeness_nodes (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
-                node_type TEXT NOT NULL CHECK (node_type IN ('goal', 'problem', 'persona', 'journey', 'feature', 'requirement', 'screen', 'api', 'database_entity', 'security_policy', 'test_spec')),
+                node_type TEXT NOT NULL CHECK (node_type IN ('product_goals', 'goal', 'problems', 'problem', 'target_users', 'persona', 'user_needs', 'user_journeys', 'journey', 'capabilities', 'features', 'feature', 'requirements', 'requirement', 'screens', 'screen', 'interactions', 'data_entities', 'database_entity', 'apis', 'api', 'security_controls', 'security_policy', 'tests', 'test_spec', 'acceptance_criteria')),
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'complete' CHECK (status IN ('complete', 'incomplete', 'missing', 'contradictory')),
+                status TEXT NOT NULL DEFAULT 'evidenced_present' CHECK (status IN ('evidenced_present', 'partially_evidenced', 'specified_not_verified', 'not_provided', 'unclear', 'contradictory', 'not_verified', 'missing', 'not_applicable', 'awaiting_author_decision', 'verified_complete', 'complete', 'incomplete')),
                 confidence_score REAL NOT NULL DEFAULT 1.0,
                 source_chunk_ids_json TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL,
@@ -642,7 +642,7 @@ class DatabaseManager:
                 project_id TEXT NOT NULL,
                 source_node_id TEXT NOT NULL,
                 target_node_id TEXT NOT NULL,
-                relationship_type TEXT NOT NULL CHECK (relationship_type IN ('addresses', 'depends_on', 'implements', 'verifies', 'conflicts_with')),
+                relationship_type TEXT NOT NULL CHECK (relationship_type IN ('supports', 'implements', 'depends_on', 'validates', 'verifies', 'conflicts_with', 'part_of', 'required_by', 'addresses')),
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
@@ -681,7 +681,7 @@ class DatabaseManager:
                 role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
                 content TEXT NOT NULL,
                 citations_json TEXT NOT NULL DEFAULT '[]',
-                classification TEXT NOT NULL DEFAULT 'general' CHECK (classification IN ('decision', 'question', 'clarification', 'code_generation', 'general')),
+                classification TEXT NOT NULL DEFAULT 'general' CHECK (classification IN ('decision', 'question', 'suggestion', 'bug', 'requirement', 'clarification', 'code_generation', 'general')),
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (chat_id) REFERENCES project_chats(id) ON DELETE CASCADE
@@ -697,13 +697,68 @@ class DatabaseManager:
                 description TEXT NOT NULL,
                 action_type TEXT NOT NULL DEFAULT 'accept' CHECK (action_type IN ('accept', 'edit', 'reject', 'defer')),
                 status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'completed', 'verified')),
-                verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN ('unverified', 'passed', 'failed')),
+                verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN ('unverified', 'passed', 'failed', 'not_verified', 'insufficient_evidence')),
                 verification_feedback TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_improvement_tasks_proj ON improvement_tasks(project_id, status);
+
+            CREATE TABLE IF NOT EXISTS finding_evidence_citations (
+                id TEXT PRIMARY KEY,
+                finding_id TEXT NOT NULL,
+                source_id TEXT,
+                snapshot_id TEXT,
+                chunk_id TEXT,
+                page_number INTEGER,
+                line_start INTEGER,
+                line_end INTEGER,
+                char_offset_start INTEGER,
+                char_offset_end INTEGER,
+                canonical_quote TEXT NOT NULL,
+                content_hash TEXT,
+                validation_result TEXT NOT NULL DEFAULT 'valid',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (finding_id) REFERENCES feedback_findings(id) ON DELETE CASCADE,
+                FOREIGN KEY (source_id) REFERENCES project_sources(id) ON DELETE SET NULL,
+                FOREIGN KEY (snapshot_id) REFERENCES project_source_snapshots(id) ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_finding_citations_finding ON finding_evidence_citations(finding_id);
+            CREATE INDEX IF NOT EXISTS idx_finding_citations_source ON finding_evidence_citations(source_id);
+
+            CREATE TABLE IF NOT EXISTS ai_budgets (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                project_id TEXT,
+                scope TEXT NOT NULL CHECK (scope IN ('account', 'project', 'task')),
+                monthly_limit_usd REAL NOT NULL DEFAULT 20.00,
+                warning_threshold_pct REAL NOT NULL DEFAULT 80.00,
+                hard_stop_enabled INTEGER NOT NULL DEFAULT 1,
+                current_period_start TEXT NOT NULL,
+                current_period_spend_usd REAL NOT NULL DEFAULT 0.0,
+                reserved_spend_usd REAL NOT NULL DEFAULT 0.0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ai_budgets_user ON ai_budgets(user_id, scope);
+
+            CREATE TABLE IF NOT EXISTS git_repository_syncs (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                provider TEXT NOT NULL CHECK (provider IN ('github', 'gitlab')),
+                repo_url TEXT NOT NULL,
+                branch TEXT NOT NULL DEFAULT 'main',
+                last_commit_hash TEXT,
+                is_private INTEGER NOT NULL DEFAULT 0,
+                credential_id TEXT,
+                sync_status TEXT NOT NULL DEFAULT 'synced',
+                last_synced_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_git_syncs_proj ON git_repository_syncs(project_id);
             """)
 
             # Upgrade conversation_sessions review_id column if not present

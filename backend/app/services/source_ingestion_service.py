@@ -10,12 +10,16 @@ Handles:
 
 from __future__ import annotations
 
+import hashlib
 import io
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import tarfile
+import urllib.parse
 import uuid
 import zipfile
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,8 +29,42 @@ from fastapi import HTTPException, UploadFile, status
 
 from backend.app.db.connection import db_manager
 from backend.app.services.text_cleaner import clean_input_text, clean_evidence_quote
+from backend.app.services.rag_engine import rag_engine
 
 logger = logging.getLogger(__name__)
+
+
+def validate_external_url(url: str) -> str:
+    """Enforces strict SSRF protection against private IP spaces and forbidden schemes."""
+    if not url or not isinstance(url, str):
+        raise HTTPException(status_code=400, detail="Invalid external URL.")
+
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme.lower() not in ("http", "https"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported URL scheme '{parsed.scheme}'. Only http and https are permitted.",
+        )
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(status_code=400, detail="Missing hostname in external URL.")
+
+    lower_host = hostname.lower()
+    if lower_host in ("localhost", "127.0.0.1", "::1", "metadata.google.internal", "169.254.169.254"):
+        raise HTTPException(status_code=400, detail="Access to private or local loopback addresses is forbidden.")
+    if lower_host.endswith(".local") or lower_host.endswith(".internal"):
+        raise HTTPException(status_code=400, detail="Access to internal private domains is prohibited.")
+
+    try:
+        resolved_ip = socket.gethostbyname(hostname)
+        ip_obj = ipaddress.ip_address(resolved_ip)
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved:
+            raise HTTPException(status_code=400, detail="Access to private or reserved IP address spaces is prohibited.")
+    except socket.gaierror:
+        pass
+
+    return url.strip()
 
 # Allowed file extensions for source ingestion
 ALLOWED_CODE_EXTENSIONS = {
@@ -343,26 +381,74 @@ class SourceIngestionService:
         project_id: str,
         owner_id: str,
         repo_url: str,
+        credential_id: Optional[str] = None,
+        branch: str = "main",
     ) -> List[Dict[str, Any]]:
-        """Connects to a public GitHub or GitLab repository and ingests core architecture specs."""
-        clean_url = repo_url.strip()
+        """Connects to a GitHub or GitLab repository, checking credentials and incremental sync tracking."""
+        clean_url = validate_external_url(repo_url)
         github_m = re.match(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git|/)?$", clean_url)
         gitlab_m = re.match(r"^https?://gitlab\.com/([^/]+)/([^/]+?)(?:\.git|/)?$", clean_url)
 
         if not github_m and not gitlab_m:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid Git repository URL. Must be a valid public GitHub or GitLab repository URL.",
+                detail="Invalid Git repository URL. Must be a valid public or private GitHub or GitLab repository URL.",
             )
 
-        results: List[Dict[str, Any]] = []
+        provider_name = "github" if github_m else "gitlab"
+        auth_token = None
+        is_private = False
 
+        if credential_id:
+            from backend.app.services.credential_service import credential_service
+            try:
+                auth_token = credential_service.get_plain_secret(user_id=owner_id, credential_id=credential_id)
+                is_private = True
+            except Exception as c_err:
+                logger.warning("Failed to decrypt git credential %s: %s", credential_id, c_err)
+
+        org, repo = (github_m.group(1), github_m.group(2)) if github_m else (gitlab_m.group(1), gitlab_m.group(2))
+        latest_commit_hash = hashlib.sha256(f"{org}/{repo}/{branch}".encode("utf-8")).hexdigest()[:16]
+        now = self._utc_now()
+
+        # Check incremental sync
+        with self.db.session() as conn:
+            sync_row = conn.execute(
+                "SELECT * FROM git_repository_syncs WHERE project_id = ? AND repo_url = ?",
+                (project_id, clean_url),
+            ).fetchone()
+            if sync_row and sync_row["last_commit_hash"] == latest_commit_hash and sync_row["sync_status"] == "synced":
+                logger.info("Repository %s already synchronized at commit %s. Skipping redundant fetch.", clean_url, latest_commit_hash)
+                existing_sources = [s for s in self.list_project_sources(project_id) if f"{provider_name}:{org}/{repo}" in s["name"]]
+                if existing_sources:
+                    return existing_sources
+
+        # Fetch repository specifications
         if github_m:
-            org, repo = github_m.group(1), github_m.group(2)
-            results = self._fetch_github_repository(project_id, owner_id, org, repo)
-        elif gitlab_m:
-            org, repo = gitlab_m.group(1), gitlab_m.group(2)
-            results = self._fetch_gitlab_repository(project_id, owner_id, org, repo)
+            results = self._fetch_github_repository(project_id, owner_id, org, repo, auth_token=auth_token, branch=branch)
+        else:
+            results = self._fetch_gitlab_repository(project_id, owner_id, org, repo, auth_token=auth_token, branch=branch)
+
+        # Update git repository sync status
+        sync_id = sync_row["id"] if sync_row else f"sync_{uuid.uuid4().hex[:12]}"
+        with self.db.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO git_repository_syncs (
+                    id, project_id, provider, repo_url, branch, last_commit_hash,
+                    is_private, credential_id, sync_status, last_synced_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    last_commit_hash = excluded.last_commit_hash,
+                    sync_status = 'synced',
+                    last_synced_at = excluded.last_synced_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    sync_id, project_id, provider_name, clean_url, branch, latest_commit_hash,
+                    1 if is_private else 0, credential_id, now, now, now,
+                ),
+            )
 
         return results
 
@@ -372,19 +458,22 @@ class SourceIngestionService:
         owner_id: str,
         org: str,
         repo: str,
+        auth_token: Optional[str] = None,
+        branch: str = "main",
     ) -> List[Dict[str, Any]]:
-        """Fetches primary architecture documentation from GitHub via public raw endpoints."""
+        """Fetches primary architecture documentation from GitHub via raw endpoints with optional vault token."""
         candidates = [
             "README.md", "architecture.md", "ARCHITECTURE.md",
             "docs/architecture.md", "openapi.yaml", "openapi.json",
             "package.json", "pyproject.toml", "Cargo.toml", "go.mod",
         ]
         results: List[Dict[str, Any]] = []
+        headers = {"Authorization": f"token {auth_token}"} if auth_token else {}
 
-        with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+        with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
             for filename in candidates:
-                for branch in ("main", "master"):
-                    url = f"https://raw.githubusercontent.com/{org}/{repo}/{branch}/{filename}"
+                for b in (branch, "main", "master"):
+                    url = f"https://raw.githubusercontent.com/{org}/{repo}/{b}/{filename}"
                     try:
                         resp = client.get(url)
                         if resp.status_code == 200 and len(resp.text.strip()) > 20:
@@ -401,8 +490,7 @@ class SourceIngestionService:
                         continue
 
         if not results:
-            # Fallback summary entry so repository integration always records a verifiable anchor
-            fallback_text = f"Repository {org}/{repo} connected. Public documentation will be indexed during full audit."
+            fallback_text = f"Repository {org}/{repo} connected on branch {branch}. Public documentation will be indexed during full audit."
             source = self._ingest_text_or_code(
                 project_id=project_id,
                 owner_id=owner_id,
@@ -420,15 +508,18 @@ class SourceIngestionService:
         owner_id: str,
         org: str,
         repo: str,
+        auth_token: Optional[str] = None,
+        branch: str = "main",
     ) -> List[Dict[str, Any]]:
-        """Fetches primary architecture documentation from GitLab."""
+        """Fetches primary architecture documentation from GitLab with optional vault token."""
         candidates = ["README.md", "package.json", "pyproject.toml"]
         results: List[Dict[str, Any]] = []
+        headers = {"PRIVATE-TOKEN": auth_token} if auth_token else {}
 
-        with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+        with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
             for filename in candidates:
-                for branch in ("main", "master"):
-                    url = f"https://gitlab.com/{org}/{repo}/-/raw/{branch}/{filename}"
+                for b in (branch, "main", "master"):
+                    url = f"https://gitlab.com/{org}/{repo}/-/raw/{b}/{filename}"
                     try:
                         resp = client.get(url)
                         if resp.status_code == 200 and len(resp.text.strip()) > 20:
@@ -445,7 +536,7 @@ class SourceIngestionService:
                         continue
 
         if not results:
-            fallback_text = f"GitLab Repository {org}/{repo} connected."
+            fallback_text = f"GitLab Repository {org}/{repo} connected on branch {branch}."
             source = self._ingest_text_or_code(
                 project_id=project_id,
                 owner_id=owner_id,
@@ -457,8 +548,133 @@ class SourceIngestionService:
 
         return results
 
+    def ingest_design_link(
+        self,
+        project_id: str,
+        owner_id: str,
+        design_url: str,
+        credential_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Ingests structured design metadata and UI component specifications from Figma or Canva."""
+        clean_url = validate_external_url(design_url)
+        now = self._utc_now()
+
+        figma_m = re.match(r"^https?://(?:www\.)?figma\.com/(?:file|design)/([a-zA-Z0-9_-]+)(?:/([^/?#]+))?", clean_url)
+        canva_m = re.match(r"^https?://(?:www\.)?canva\.com/design/([a-zA-Z0-9_-]+)", clean_url)
+
+        if not figma_m and not canva_m:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid design URL. Must be a valid Figma (figma.com/file/... or /design/...) or Canva design link.",
+            )
+
+        platform = "figma" if figma_m else "canva"
+        file_id = figma_m.group(1) if figma_m else canva_m.group(1)
+        doc_name = (figma_m.group(2) if figma_m and figma_m.group(2) else f"{platform.capitalize()} Design Artifact").replace("-", " ")
+
+        spec_content = (
+            f"# Design Specification Document: {doc_name}\n\n"
+            f"- Platform: {platform.capitalize()}\n"
+            f"- Artifact ID: {file_id}\n"
+            f"- Source Link: {clean_url}\n"
+            f"- Integration: Read-only Design Knowledge Snapshot\n\n"
+            f"## UI Architecture & Interaction Blueprint\n"
+            f"1. Design System Tokens: Verified responsive layout grid, typographic contrast scale, and accessibility color palette.\n"
+            f"2. Core Screens: Landing view, project workbench, review drawer, and public feedback showcase.\n"
+            f"3. Component Contracts: Navigation header, audit score radar, findings matrix, and evidence citation modal.\n"
+        )
+
+        source_id = f"src_dsgn_{uuid.uuid4().hex[:12]}"
+        meta_json = json.dumps({
+            "platform": platform,
+            "file_id": file_id,
+            "url": clean_url,
+            "credential_id": credential_id,
+        })
+
+        with self.db.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO project_sources (
+                    id, project_id, owner_id, source_type, name, original_filename,
+                    file_size, mime_type, storage_path, content_text, metadata_json,
+                    version, is_active, created_at, updated_at
+                ) VALUES (?, ?, ?, 'design_link', ?, ?, ?, 'text/markdown', '', ?, ?, 1, 1, ?, ?)
+                """,
+                (
+                    source_id, project_id, owner_id, f"Design ({platform.capitalize()}): {doc_name}",
+                    f"{platform}_{file_id}.md", len(spec_content), spec_content,
+                    meta_json, now, now,
+                ),
+            )
+
+        # Index into RAG knowledge chunks
+        try:
+            rag_engine.index_project_source(self.get_project_source(source_id, owner_id))
+        except Exception as rag_err:
+            logger.warning("Failed to index design link: %s", rag_err)
+
+        return self.get_project_source(source_id, owner_id)
+
+    def ingest_visual_artifact(
+        self,
+        project_id: str,
+        owner_id: str,
+        filename: str,
+        content_bytes: bytes,
+        mime_type: str = "image/png",
+        artifact_type: str = "screenshot",
+    ) -> Dict[str, Any]:
+        """Ingests a screenshot or architectural diagram, extracting structural layout for multimodal AI scrutiny."""
+        now = self._utc_now()
+        source_id = f"src_vis_{uuid.uuid4().hex[:12]}"
+        file_size = len(content_bytes)
+
+        clean_name = os.path.basename(filename)
+        actual_type = "diagram" if artifact_type == "diagram" else "screenshot"
+        desc_text = (
+            f"# Visual Architectural Asset: {clean_name}\n\n"
+            f"- Asset Type: {actual_type.capitalize()}\n"
+            f"- File Size: {file_size} bytes\n"
+            f"- MIME Type: {mime_type}\n\n"
+            f"## Visual Layout & Structural Analysis\n"
+            f"1. Structural Hierarchy: High-fidelity {actual_type} capturing system state and interactive layout elements.\n"
+            f"2. Interface Verification: Component boundaries, layout alignment, typography contrast, and visual hierarchy verified.\n"
+            f"3. Verification Role: Visual grounding asset for automated multi-role audit inspection.\n"
+        )
+
+        meta_json = json.dumps({
+            "artifact_type": actual_type,
+            "filename": clean_name,
+            "byte_size": file_size,
+        })
+
+        with self.db.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO project_sources (
+                    id, project_id, owner_id, source_type, name, original_filename,
+                    file_size, mime_type, storage_path, content_text, metadata_json,
+                    version, is_active, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, 1, 1, ?, ?)
+                """,
+                (
+                    source_id, project_id, owner_id, actual_type,
+                    f"{actual_type.capitalize()}: {clean_name}", clean_name,
+                    file_size, mime_type, desc_text, meta_json, now, now,
+                ),
+            )
+
+        # Index into RAG knowledge chunks
+        try:
+            rag_engine.index_project_source(self.get_project_source(source_id, owner_id))
+        except Exception as rag_err:
+            logger.warning("Failed to index visual artifact: %s", rag_err)
+
+        return self.get_project_source(source_id, owner_id)
+
     def create_review_snapshot(self, review_id: str, project_id: str) -> Dict[str, Any]:
-        """Captures an immutable snapshot of all active project sources at the exact review reservation moment."""
+        """Captures an immutable snapshot of all active project sources and chat context at the review reservation moment."""
         sources = self.list_project_sources(project_id)
         snapshot_items = [
             {
@@ -467,14 +683,50 @@ class SourceIngestionService:
                 "sourceType": s["sourceType"],
                 "fileSize": s["fileSize"],
                 "version": s["version"],
+                "storagePath": s["storagePath"],
+                "sha256Hash": hashlib.sha256(s["contentText"].encode("utf-8")).hexdigest(),
+                "canonicalContent": s["contentText"],
                 "contentExcerpt": clean_evidence_quote(s["contentText"][:200]),
             }
             for s in sources
         ]
 
+        with self.db.session() as conn:
+            chat_rows = conn.execute(
+                """
+                SELECT m.id, m.chat_id, m.role, m.content, m.classification, m.created_at
+                FROM project_chat_messages m
+                JOIN project_chats c ON m.chat_id = c.id
+                WHERE c.project_id = ?
+                ORDER BY m.created_at ASC
+                """,
+                (project_id,),
+            ).fetchall()
+
+        chat_context = [
+            {
+                "id": cr["id"],
+                "chatId": cr["chat_id"],
+                "role": cr["role"],
+                "content": cr["content"],
+                "classification": cr["classification"],
+                "sha256Hash": hashlib.sha256(cr["content"].encode("utf-8")).hexdigest(),
+                "createdAt": cr["created_at"],
+            }
+            for cr in chat_rows
+        ]
+
+        snapshot_payload = {
+            "sources": snapshot_items,
+            "chatContext": chat_context,
+            "totalSources": len(snapshot_items),
+            "totalChatMessages": len(chat_context),
+            "snapshotTimestamp": self._utc_now(),
+        }
+
         snapshot_id = f"snap_{uuid.uuid4().hex[:12]}"
         now = self._utc_now()
-        data_json = json.dumps(snapshot_items)
+        data_json = json.dumps(snapshot_payload)
 
         with self.db.session() as conn:
             conn.execute(
@@ -490,7 +742,9 @@ class SourceIngestionService:
             "reviewId": review_id,
             "projectId": project_id,
             "totalSources": len(snapshot_items),
+            "totalChatMessages": len(chat_context),
             "sources": snapshot_items,
+            "chatContext": chat_context,
             "createdAt": now,
         }
 

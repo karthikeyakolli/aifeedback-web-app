@@ -113,6 +113,7 @@ class ProjectChatAndWorkflowService:
 
         # 2. Persist user message
         user_msg_id = f"msg_{uuid.uuid4().hex[:12]}"
+        chat_source_id = f"src_chat_{chat_id[:8]}"
         with self.db.session() as conn:
             conn.execute(
                 """
@@ -122,6 +123,63 @@ class ProjectChatAndWorkflowService:
                 """,
                 (user_msg_id, chat_id, clean_msg, classification, now),
             )
+
+            # P1-3: Index chat into project knowledge base (source_type='chat')
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO project_sources (
+                        id, project_id, owner_id, source_type, name, original_filename,
+                        file_size, mime_type, content_text, created_at, updated_at
+                    ) VALUES (?, ?, ?, 'chat', ?, ?, ?, 'text/plain', ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at
+                    """,
+                    (
+                        chat_source_id,
+                        project_id,
+                        user_id,
+                        f"Review Chat: {chat.get('title', 'Project Chat')}",
+                        f"chat_{chat_id[:8]}.txt",
+                        len(clean_msg),
+                        clean_msg,
+                        now,
+                        now,
+                    ),
+                )
+                chunk_id = f"chk_chat_{user_msg_id}"
+                meta_json = json.dumps({
+                    "source_type": "chat",
+                    "message_id": user_msg_id,
+                    "chat_id": chat_id,
+                    "role": "user",
+                    "classification": classification,
+                    "is_approved_decision": (classification == "decision"),
+                    "author_user_id": user_id,
+                    "timestamp": now,
+                })
+                conn.execute(
+                    """
+                    INSERT INTO project_knowledge_chunks (
+                        id, project_id, source_id, chunk_index, content, clean_content,
+                        token_count, embedding_vector, page_number, section_heading,
+                        metadata_json, created_at
+                    ) VALUES (?, ?, ?, 0, ?, ?, ?, '[]', 1, ?, ?, ?)
+                    ON CONFLICT(id) DO NOTHING
+                    """,
+                    (
+                        chunk_id,
+                        project_id,
+                        chat_source_id,
+                        clean_msg,
+                        clean_msg,
+                        max(1, len(clean_msg) // 4),
+                        f"Chat [{classification.upper()}]",
+                        meta_json,
+                        now,
+                    ),
+                )
+            except Exception as index_err:
+                logger.warning("Failed to index chat message into knowledge chunks: %s", index_err)
 
         # 3. Hybrid RAG retrieval for grounding
         evidence = rag_engine.hybrid_search(project_id=project_id, query=clean_msg, top_k=4)
@@ -162,15 +220,21 @@ class ProjectChatAndWorkflowService:
         }
 
     def _classify_message(self, text: str) -> str:
-        """Categorizes chat message into operational intent."""
+        """Categorizes chat message into operational intent across 8 categories."""
         lower = text.lower()
-        if any(w in lower for w in ("approve", "decide", "reject", "confirm", "accept", "defer")):
+        if any(w in lower for w in ("approve", "decide", "reject", "confirm", "accept", "defer", "we will use", "decision:")):
             return "decision"
-        elif any(w in lower for w in ("how to implement", "generate code", "sql", "write function", "scaffold")):
+        elif any(w in lower for w in ("bug", "defect", "flaw", "broken", "vulnerability", "fails", "error in", "crash")):
+            return "bug"
+        elif any(w in lower for w in ("requirement", "must have", "shall", "needs to support", "specification", "sla")):
+            return "requirement"
+        elif any(w in lower for w in ("suggest", "recommend", "how about", "we could", "idea", "consider")):
+            return "suggestion"
+        elif any(w in lower for w in ("how to implement", "generate code", "sql", "write function", "scaffold", "snippet")):
             return "code_generation"
-        elif any(w in lower for w in ("why", "explain", "clarify", "what does this mean")):
+        elif any(w in lower for w in ("why", "explain", "clarify", "what does this mean", "in other words")):
             return "clarification"
-        elif "?" in text or any(w in lower for w in ("what", "how", "when", "where", "which")):
+        elif "?" in text or any(w in lower for w in ("what", "how", "when", "where", "which", "who")):
             return "question"
         return "general"
 
@@ -334,15 +398,45 @@ class ProjectChatAndWorkflowService:
                         "UPDATE feedback_findings SET status = 'addressed', resolved_at = ?, updated_at = ? WHERE id = ?",
                         (now, now, finding_id),
                     )
+                    # Insert traceable evidence citation into normalized table
+                    citation_id = f"cit_{uuid.uuid4().hex[:12]}"
+                    try:
+                        conn.execute(
+                            """
+                            INSERT INTO finding_evidence_citations (
+                                id, finding_id, source_id, chunk_id, canonical_quote, validation_result, created_at
+                            ) VALUES (?, ?, ?, ?, ?, 'valid', ?)
+                            """,
+                            (
+                                citation_id,
+                                finding_id,
+                                getattr(evidence[0], "source_id", None),
+                                getattr(evidence[0], "chunk_id", None),
+                                getattr(evidence[0], "clean_quote", ""),
+                                now,
+                            ),
+                        )
+                    except Exception as cit_err:
+                        logger.warning("Failed to record finding_evidence_citations: %s", cit_err)
+
                 new_task_status = "completed"
             else:
-                ver_status = "failed"
-                ver_feedback = (
-                    "Verification failed: No matching technical evidence or code changes confirming "
-                    "this resolution were discovered in project knowledge sources. Please attach source "
-                    "code, diffs, or specifications demonstrating the change."
-                )
-                new_task_status = "in_progress"
+                # Check if sources or snapshots exist for this project
+                src_count = conn.execute("SELECT COUNT(*) FROM project_sources WHERE project_id = ?", (project_id,)).fetchone()[0]
+                if src_count == 0:
+                    ver_status = "insufficient_evidence"
+                    ver_feedback = (
+                        "Verification inconclusive: No source code, attachments, or snapshots exist for this project. "
+                        "Resolution cannot be verified without verifiable evidence."
+                    )
+                else:
+                    ver_status = "failed"
+                    ver_feedback = (
+                        "Verification failed: Existing project knowledge sources do not confirm the resolution. "
+                        "Please attach code diffs, updated documentation, or snapshots demonstrating the fix."
+                    )
+                # Task status remains unchanged (decoupled from verification)
+                new_task_status = task["status"]
 
             conn.execute(
                 """

@@ -21,6 +21,7 @@ from backend.app.schemas.project import (
     StructuredProjectFeedbackProposal,
     ProjectSourceRead,
     ProjectRepoLinkRequest,
+    ProjectDesignLinkRequest,
     RAGQueryRequest,
     ProjectAIConfigRequest,
     CompletenessDecisionRequest,
@@ -113,14 +114,16 @@ def get_public_feedback_report(project_id: str):
     return project_repo.get_public_feedback_report(project_id)
 
 
-@router.post("/projects/public/{project_id}/upvote", response_model=PublicUpvoteResponse)
+@router.post("/projects/public/{project_id}/upvote")
 def upvote_public_project(
     project_id: str,
     current_user: dict = Depends(get_current_user_required),
 ):
-    """Upvotes or toggles upvote for a published public project (Authenticated users)."""
-    user_id = get_user_id(current_user)
-    return project_repo.upvote_public_project(project_id, user_id)
+    """Disabled in first release: Public space is strictly read-only."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Public space is strictly read-only in the initial release. Upvoting is disabled.",
+    )
 
 
 @router.get("/projects/{project_id}", response_model=ProjectRead)
@@ -275,10 +278,14 @@ def compare_feedback_reports(
                 )
             )
 
-    # Check for base findings absent in target report (resolved by omission)
+    # Check for base findings absent in target report (potentially resolved or unverified omission)
     for key, bf in base_map.items():
         if key not in target_map:
-            resolved += 1
+            if bf.get("status") == "addressed":
+                resolved += 1
+                change_t = "resolved"
+            else:
+                change_t = "potentially_resolved"
             comparison_items.append(
                 FindingComparisonItem(
                     finding_id=bf["id"],
@@ -287,7 +294,7 @@ def compare_feedback_reports(
                     category=bf["category"],
                     status_in_base=bf["status"],
                     status_in_target=None,
-                    change_type="resolved",
+                    change_type=change_t,
                 )
             )
 
@@ -383,7 +390,7 @@ def link_project_repository(
     payload: ProjectRepoLinkRequest,
     current_user: dict = Depends(get_current_user_required),
 ):
-    """Inspects a public GitHub or GitLab repository and ingests source and architecture specs into RAG."""
+    """Inspects a public or private GitHub/GitLab repository and ingests source and architecture specs into RAG."""
     user_id = get_user_id(current_user)
     _ = project_repo.get_project(project_id, requesting_user_id=user_id)
 
@@ -391,11 +398,55 @@ def link_project_repository(
         project_id=project_id,
         owner_id=user_id,
         repo_url=payload.repository_url,
+        credential_id=payload.credential_id,
+        branch=payload.branch or "main",
     )
     for s in sources:
         rag_engine.index_project_source(s)
 
     return sources
+
+
+@router.post("/projects/{project_id}/sources/design", response_model=ProjectSourceRead, status_code=status.HTTP_201_CREATED)
+def link_project_design(
+    project_id: str,
+    payload: ProjectDesignLinkRequest,
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Ingests read-only design specifications from Figma or Canva links."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+
+    source = source_ingestion_service.ingest_design_link(
+        project_id=project_id,
+        owner_id=user_id,
+        design_url=payload.design_url,
+        credential_id=payload.credential_id,
+    )
+    return source
+
+
+@router.post("/projects/{project_id}/sources/visual", response_model=ProjectSourceRead, status_code=status.HTTP_201_CREATED)
+async def upload_project_visual(
+    project_id: str,
+    file: UploadFile = File(...),
+    artifact_type: str = Query("screenshot", pattern="^(screenshot|diagram)$"),
+    current_user: dict = Depends(get_current_user_required),
+):
+    """Uploads and ingests a UI screenshot or architectural diagram into project sources."""
+    user_id = get_user_id(current_user)
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+
+    content_bytes = await file.read()
+    source = source_ingestion_service.ingest_visual_artifact(
+        project_id=project_id,
+        owner_id=user_id,
+        filename=file.filename or "visual_asset.png",
+        content_bytes=content_bytes,
+        mime_type=file.content_type or "image/png",
+        artifact_type=artifact_type,
+    )
+    return source
 
 
 @router.get("/projects/{project_id}/sources", response_model=List[ProjectSourceRead])

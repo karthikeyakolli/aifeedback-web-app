@@ -107,10 +107,32 @@ class AIOrchestratorService:
         user_id = user_id or project.get("userId") or project.get("user_id") or "usr_anonymous"
         project_id = project.get("id")
 
-        providers_to_try = list(self.default_provider_order)
-        if preferred_provider and preferred_provider in providers_to_try:
-            providers_to_try.remove(preferred_provider)
-            providers_to_try.insert(0, preferred_provider)
+        # Resolve policy-approved providers and prohibited fallbacks (P0-2)
+        from backend.app.services.provider_policy_service import provider_policy_service
+        from backend.app.services.budget_service import budget_service, BudgetExceededError
+
+        providers_to_try, policy_meta = provider_policy_service.resolve_provider_sequence(
+            user_id=user_id,
+            project_id=project_id,
+            task_type="review",
+            requested_provider=preferred_provider,
+        )
+
+        reservation_token = None
+        try:
+            reservation_token = budget_service.check_and_reserve_budget(
+                user_id=user_id,
+                project_id=project_id,
+                estimated_cost_usd=0.005,
+                task_type="review",
+            )
+        except BudgetExceededError as b_err:
+            logger.warning("AI Budget hard stop triggered for user %s: %s. Falling back to deterministic rule engine.", user_id, b_err.detail)
+            proposal = self._generate_deterministic_proposal(project, focus)
+            proposal.fallback_reason = f"Budget limit reached: {b_err.detail}"
+            sanitized = self.sanitize_feedback_proposal(proposal)
+            setattr(sanitized, "_usage", {"prompt_tokens": 0, "completion_tokens": 0, "provider": "deterministic"})
+            return sanitized
 
         last_error = None
         call_start = time.time()
@@ -124,7 +146,7 @@ class AIOrchestratorService:
                 prompt_toks = max(200, len(project.get("description", "")) // 4 + 300)
                 comp_toks = 450
                 try:
-                    self.record_token_usage(
+                    usage_rec = self.record_token_usage(
                         user_id=user_id,
                         provider="deterministic",
                         model_id="offline-rule-engine-v1",
@@ -136,6 +158,7 @@ class AIOrchestratorService:
                         review_id=review_id,
                         status="success",
                     )
+                    budget_service.reconcile_reservation(user_id=user_id, reservation_token=reservation_token, actual_cost_usd=usage_rec.get("costUsd", 0.0), project_id=project_id)
                 except Exception as log_err:
                     logger.warning("Failed to record token usage for deterministic run: %s", log_err)
                 setattr(sanitized, "_usage", {"prompt_tokens": prompt_toks, "completion_tokens": comp_toks, "provider": "deterministic"})
@@ -175,11 +198,15 @@ class AIOrchestratorService:
                     continue
 
                 if proposal and proposal.findings:
+                    proposal.provider = provider
+                    proposal.model = model_id
+                    proposal.is_fallback = False
+                    proposal.execution_mode = "multi_provider_llm"
                     duration_ms = int((time.time() - provider_start) * 1000)
                     prompt_toks = max(300, len(project.get("description", "")) // 4 + 400)
                     comp_toks = max(400, len(proposal.executive_summary) // 4 + sum(len(f.observation) // 4 for f in proposal.findings))
                     try:
-                        self.record_token_usage(
+                        usage_rec = self.record_token_usage(
                             user_id=user_id,
                             provider=provider,
                             model_id=model_id,
@@ -191,6 +218,7 @@ class AIOrchestratorService:
                             review_id=review_id,
                             status="success",
                         )
+                        budget_service.reconcile_reservation(user_id=user_id, reservation_token=reservation_token, actual_cost_usd=usage_rec.get("costUsd", 0.0), project_id=project_id)
                     except Exception as log_err:
                         logger.warning("Failed to record token usage for provider %s: %s", provider, log_err)
                     sanitized = self.sanitize_feedback_proposal(proposal)
@@ -205,12 +233,17 @@ class AIOrchestratorService:
         # If all providers were exhausted or failed, guarantee offline synthesis
         logger.warning("All configured AI providers exhausted. Falling back to deterministic proposal.")
         proposal = self._generate_deterministic_proposal(project, focus)
+        proposal.provider = "deterministic"
+        proposal.model = "deterministic_offline"
+        proposal.is_fallback = True
+        proposal.fallback_reason = "All configured external AI providers were exhausted or failed; synthesized via offline deterministic rule engine."
+        proposal.execution_mode = "offline_rule_engine"
         sanitized = self.sanitize_feedback_proposal(proposal)
         duration_ms = int((time.time() - call_start) * 1000)
         prompt_toks = 500
         comp_toks = 400
         try:
-            self.record_token_usage(
+            usage_rec = self.record_token_usage(
                 user_id=user_id,
                 provider="deterministic",
                 model_id="offline-rule-engine-v1",
@@ -222,6 +255,7 @@ class AIOrchestratorService:
                 review_id=review_id,
                 status="success",
             )
+            budget_service.reconcile_reservation(user_id=user_id, reservation_token=reservation_token, actual_cost_usd=usage_rec.get("costUsd", 0.0), project_id=project_id)
         except Exception as log_err:
             logger.warning("Failed to record fallback token usage: %s", log_err)
         setattr(sanitized, "_usage", {"prompt_tokens": prompt_toks, "completion_tokens": comp_toks, "provider": "deterministic"})
@@ -396,6 +430,11 @@ class AIOrchestratorService:
                 f"The core concepts demonstrate strong understanding of developer workflows and domain requirements."
             ),
             findings=findings,
+            provider="deterministic",
+            model="deterministic_offline",
+            is_fallback=True,
+            fallback_reason="Synthesized via deterministic offline rule engine grounded in project specifications.",
+            execution_mode="offline_rule_engine",
         )
 
     def record_usage(

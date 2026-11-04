@@ -1000,13 +1000,29 @@ export interface ProjectAIUsageSummary {
   averageLatencyMs: number;
 }
 
+export type CompletenessGapStatus =
+  | 'complete'
+  | 'incomplete'
+  | 'missing'
+  | 'contradictory'
+  | 'evidenced_present'
+  | 'partially_evidenced'
+  | 'specified_not_verified'
+  | 'not_provided'
+  | 'unclear'
+  | 'not_verified'
+  | 'not_applicable'
+  | 'awaiting_author_decision'
+  | 'verified_complete'
+  | string;
+
 export interface CompletenessNode {
   id: string;
   projectId: string;
   nodeType: string;
   title: string;
   description: string;
-  status: 'complete' | 'incomplete' | 'missing' | 'contradictory';
+  status: CompletenessGapStatus;
   confidenceScore: number;
   sourceChunkIds: string[];
   createdAt: string;

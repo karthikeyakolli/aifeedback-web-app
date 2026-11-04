@@ -281,7 +281,7 @@ def test_public_feedback_report_access(creator_headers):
 
 
 def test_community_upvoting_and_rate_enforcement(creator_headers, community_headers):
-    """Authenticated community members can upvote public projects; private projects cannot be upvoted."""
+    """Verifies that public upvoting is disabled and rejected with 403 Forbidden, enforcing read-only Public space."""
     owner_h = {"Authorization": creator_headers["Authorization"]}
     comm_h = {"Authorization": community_headers["Authorization"]}
 
@@ -299,35 +299,12 @@ def test_community_upvoting_and_rate_enforcement(creator_headers, community_head
     ).json()
     pub_id = pub_proj["id"]
 
-    # Unauthenticated upvote rejected with 401
+    # Unauthenticated upvote rejected with 401 or 403
     unauth_upvote = client.post(f"/api/v1/projects/public/{pub_id}/upvote")
     assert unauth_upvote.status_code in (401, 403)
 
-    # Authenticated user upvotes -> upvotesCount becomes 1
+    # Authenticated user upvote is disabled and rejected with 403 Forbidden
     upvote_1 = client.post(f"/api/v1/projects/public/{pub_id}/upvote", headers=comm_h)
-    assert upvote_1.status_code == 200
-    assert upvote_1.json()["upvotesCount"] == 1
-    assert upvote_1.json()["hasUpvoted"] is True
-
-    # User toggles upvote again -> upvotesCount decrements to 0
-    upvote_2 = client.post(f"/api/v1/projects/public/{pub_id}/upvote", headers=comm_h)
-    assert upvote_2.status_code == 200
-    assert upvote_2.json()["upvotesCount"] == 0
-    assert upvote_2.json()["hasUpvoted"] is False
-
-    # Attempting to upvote a private project returns 404
-    priv_proj = client.post(
-        "/api/v1/projects",
-        headers=owner_h,
-        json={
-            "name": "Secret Private Vault",
-            "tagline": "Private project not open for votes",
-            "category": "developer-tools",
-            "description": "Private project description.",
-            "is_public": False,
-        },
-    ).json()
-
-    priv_upvote = client.post(f"/api/v1/projects/public/{priv_proj['id']}/upvote", headers=comm_h)
-    assert priv_upvote.status_code == 404
+    assert upvote_1.status_code == 403
+    assert "read-only" in upvote_1.json()["detail"].lower()
 

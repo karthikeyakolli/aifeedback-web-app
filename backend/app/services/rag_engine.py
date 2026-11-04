@@ -218,7 +218,7 @@ class AdvancedRAGEngine:
 
             if combined_score > 0.05:
                 rel_pct = min(100, max(5, int(combined_score * 100)))
-                line_str = f"L{r['line_start']}-L{r['line_end']}" if r.get("line_start") else None
+                line_str = f"L{r['line_start']}-L{r['line_end']}" if ("line_start" in r.keys() and r["line_start"] is not None) else None
                 results.append(
                     RetrievedKnowledgeEvidence(
                         chunk_id=r["id"],

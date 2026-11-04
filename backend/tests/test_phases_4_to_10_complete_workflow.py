@@ -466,7 +466,7 @@ def test_personal_and_public_spaces_publishing_lifecycle(test_project, auth_head
     assert pub_data["name"] == "Telemetry Stream Gateway"
     assert "userId" not in pub_data or pub_data.get("userId") is None  # Safe public projection!
 
-    # 4. Public Upvoting
+    # 4. Public Upvoting is disabled (Public space is strictly read-only)
     upvote_res = client.post(f"/api/v1/projects/public/{project_id}/upvote", headers=auth_headers)
-    assert upvote_res.status_code == 200
-    assert upvote_res.json()["upvotesCount"] >= 1
+    assert upvote_res.status_code == 403
+    assert "read-only" in upvote_res.json()["detail"].lower()

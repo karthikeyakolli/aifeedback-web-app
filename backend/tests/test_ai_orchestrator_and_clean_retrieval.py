@@ -316,9 +316,10 @@ def test_compare_feedback_reports_includes_omitted_findings():
         conn.execute("INSERT INTO feedback_reports (id, review_id, project_id, executive_summary, strengths_summary, total_findings_count, created_at) VALUES (?, ?, ?, 'Base', 'Str', 2, datetime('now'))", (base_rep_id, rev_base, project_id))
         conn.execute("INSERT INTO feedback_reports (id, review_id, project_id, executive_summary, strengths_summary, total_findings_count, created_at) VALUES (?, ?, ?, 'Target', 'Str', 1, datetime('now'))", (target_rep_id, rev_target, project_id))
 
-        # Base findings: Bug 1 (will persist) and Bug 2 (will be omitted in target report)
+        # Base findings: Bug 1 (will persist), Bug 2 (addressed and omitted -> resolved), and Bug 3 (open and omitted -> potentially_resolved)
         conn.execute("INSERT INTO feedback_findings (id, report_id, project_id, title, severity, category, observation, evidence_quote, recommendation, status, created_at, updated_at) VALUES (?, ?, ?, 'Missing Rate Limiter', 'high', 'security', 'obs', 'ev', 'rec', 'open', datetime('now'), datetime('now'))", (f"fnd_1_{project_id[:6]}", base_rep_id, project_id))
-        conn.execute("INSERT INTO feedback_findings (id, report_id, project_id, title, severity, category, observation, evidence_quote, recommendation, status, created_at, updated_at) VALUES (?, ?, ?, 'Unencrypted Local Cache', 'medium', 'security', 'obs', 'ev', 'rec', 'open', datetime('now'), datetime('now'))", (f"fnd_2_{project_id[:6]}", base_rep_id, project_id))
+        conn.execute("INSERT INTO feedback_findings (id, report_id, project_id, title, severity, category, observation, evidence_quote, recommendation, status, created_at, updated_at) VALUES (?, ?, ?, 'Unencrypted Local Cache', 'medium', 'security', 'obs', 'ev', 'rec', 'addressed', datetime('now'), datetime('now'))", (f"fnd_2_{project_id[:6]}", base_rep_id, project_id))
+        conn.execute("INSERT INTO feedback_findings (id, report_id, project_id, title, severity, category, observation, evidence_quote, recommendation, status, created_at, updated_at) VALUES (?, ?, ?, 'Unbounded Connection Pool', 'low', 'performance', 'obs', 'ev', 'rec', 'open', datetime('now'), datetime('now'))", (f"fnd_4_{project_id[:6]}", base_rep_id, project_id))
 
         # Target finding: Bug 1 persisted
         conn.execute("INSERT INTO feedback_findings (id, report_id, project_id, title, severity, category, observation, evidence_quote, recommendation, status, created_at, updated_at) VALUES (?, ?, ?, 'Missing Rate Limiter', 'high', 'security', 'obs', 'ev', 'rec', 'open', datetime('now'), datetime('now'))", (f"fnd_3_{project_id[:6]}", target_rep_id, project_id))
@@ -332,9 +333,15 @@ def test_compare_feedback_reports_includes_omitted_findings():
     assert diff["resolvedCount"] == 1
     assert diff["persistedCount"] == 1
 
-    # Finding 'Unencrypted Local Cache' was resolved by omission
-    omitted = next((item for item in diff["items"] if item["title"] == "Unencrypted Local Cache"), None)
-    assert omitted is not None
-    assert omitted["changeType"] == "resolved"
-    assert omitted["statusInTarget"] is None
+    # Finding 'Unencrypted Local Cache' was verified addressed and omitted -> resolved
+    omitted_resolved = next((item for item in diff["items"] if item["title"] == "Unencrypted Local Cache"), None)
+    assert omitted_resolved is not None
+    assert omitted_resolved["changeType"] == "resolved"
+    assert omitted_resolved["statusInTarget"] is None
+
+    # Finding 'Unbounded Connection Pool' was open and omitted -> potentially_resolved
+    omitted_potential = next((item for item in diff["items"] if item["title"] == "Unbounded Connection Pool"), None)
+    assert omitted_potential is not None
+    assert omitted_potential["changeType"] == "potentially_resolved"
+    assert omitted_potential["statusInTarget"] is None
 

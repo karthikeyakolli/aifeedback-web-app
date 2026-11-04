@@ -75,18 +75,27 @@ class CompletenessMapService:
         edges = [self._format_edge(r) for r in edges_rows]
         decisions = [self._format_decision(r) for r in decisions_rows]
 
-        # Calculate metrics
+        # Calculate metrics across expanded gap states
         total_nodes = len(nodes)
-        complete_count = sum(1 for n in nodes if n["status"] == "complete")
-        missing_count = sum(1 for n in nodes if n["status"] == "missing")
+        complete_count = sum(1 for n in nodes if n["status"] in ("complete", "evidenced_present", "verified_complete"))
+        missing_count = sum(1 for n in nodes if n["status"] in ("missing", "not_provided"))
         contradictory_count = sum(1 for n in nodes if n["status"] == "contradictory")
-        incomplete_count = sum(1 for n in nodes if n["status"] == "incomplete")
+        incomplete_count = sum(1 for n in nodes if n["status"] in ("incomplete", "partially_evidenced", "specified_not_verified", "not_verified", "unclear", "awaiting_author_decision"))
 
         completeness_score = int((complete_count / max(1, total_nodes)) * 100)
 
         # Projections
         hierarchy = self._build_hierarchy_projection(nodes, edges)
         table_view = self._build_table_projection(nodes, edges)
+
+        gap_state_breakdown = {
+            s: sum(1 for n in nodes if n["status"] == s)
+            for s in [
+                "evidenced_present", "partially_evidenced", "specified_not_verified",
+                "not_provided", "unclear", "contradictory", "not_verified",
+                "missing", "not_applicable", "awaiting_author_decision", "verified_complete",
+            ]
+        }
 
         summary_data = {
             "totalNodes": total_nodes,
@@ -95,6 +104,7 @@ class CompletenessMapService:
             "missingCount": missing_count,
             "contradictoryCount": contradictory_count,
             "completenessPercentage": completeness_score,
+            "gapStateBreakdown": gap_state_breakdown,
         }
 
         return {
@@ -150,29 +160,52 @@ class CompletenessMapService:
 
         now = datetime.now(timezone.utc).isoformat()
 
-        # Seed core nodes
+        # Seed core nodes across the complete 15-node taxonomy and 11 gap states
         raw_nodes = [
-            ("n_goal_1", "goal", f"{name} Core Mission", f"Empower developers in the {category} ecosystem with reliable tooling.", "complete", 1.0),
-            ("n_prob_1", "problem", "High Friction and Manual Audit Gaps", "Engineering teams face fragmented feedback cycles and lack evidence traceability.", "complete", 0.95),
-            ("n_feat_1", "feature", "Automated Multi-Model Review Engine", "Rigorous AI evaluation across 5 technical and UX dimensions.", "complete", 0.90),
-            ("n_feat_2", "feature", "Interactive Product Completeness Map", "Visual decomposition of goals, APIs, schemas, and missing requirements.", "complete", 0.90),
-            ("n_api_1", "api", "Review Reservation and Finalization API", "Endpoints /projects/{id}/review/start and worker lease finalization.", "complete", 0.95),
-            ("n_db_1", "database_entity", "Relational AI Reviews & Reports Schema", "Durable storage of reviews, findings, and immutable snapshots.", "complete", 0.95),
-            ("n_sec_1", "security_policy", "Cryptographic BYOK Credential Vault", "AES-256-GCM encryption with authenticated aad tags for user API keys.", "complete", 0.95),
-            ("n_test_1", "test_spec", "Concurrency & Fenced Worker Lease Test Suite", "Verifies zero active duplicate review sessions and stale lease rejection.", "complete", 1.0),
-            ("n_miss_1", "requirement", "Automated Periodic Health Check Cron", "Missing scheduled background health heartbeat monitor for external LLMs.", "missing", 0.85),
-            ("n_gap_1", "test_spec", "Adversarial Prompt Injection Fuzz Testing", "Test coverage for malicious XML tag injections in attached documents.", "incomplete", 0.80),
+            # Tier 1: Strategy, Users & Needs
+            ("n_goal_1", "product_goals", f"{name} Strategic Mission", f"Empower engineering teams in the {category} ecosystem with automated, verifiable AI feedback.", "verified_complete", 1.0),
+            ("n_prob_1", "problems", "Fragmented Audit Cycles & Subjective Reviews", "Teams suffer from manual reviews that lack evidence citations, audit trails, and verifiable benchmarks.", "evidenced_present", 0.95),
+            ("n_user_1", "target_users", "Principal Architects & Tech Leads", "Senior engineering stakeholders responsible for system integrity, security policies, and launch readiness.", "evidenced_present", 0.95),
+            ("n_need_1", "user_needs", "Immutable Evidence & Verifiable Audit Reports", "Authors need traceable quotes linked directly to project source snapshots with line-level references.", "evidenced_present", 0.90),
+
+            # Tier 2: Journeys & Capabilities
+            ("n_jour_1", "user_journeys", "Ingestion to Scrutinized Report Workflow", "End-to-end journey from source file/git ingestion to multi-role AI review and interactive chat.", "evidenced_present", 0.90),
+            ("n_cap_1", "capabilities", "Multi-Provider AI Orchestration", "Flexible LLM dispatching across Gemini, OpenRouter, and NVIDIA with deterministic offline fallback.", "evidenced_present", 0.95),
+            ("n_feat_1", "features", "Automated Multi-Model Review Engine", "Rigorous AI evaluation across 5 technical and UX dimensions with fenced worker leases.", "evidenced_present", 0.95),
+            ("n_feat_2", "features", "Interactive Product Completeness Map", "Visual graph decomposition of goals, APIs, schemas, and missing requirements across 15 categories.", "evidenced_present", 0.95),
+            ("n_req_1", "requirements", "Automated Periodic Health Check Cron", "Missing scheduled background health heartbeat monitor for external LLM endpoints.", "missing", 0.85),
+            ("n_req_2", "requirements", "Bi-directional Real-Time Ingestion Sync", "Automatic git webhook ingestion from private GitLab repositories.", "partially_evidenced", 0.80),
+
+            # Tier 3: UX & Interface Contracts
+            ("n_scr_1", "screens", "Project Review & Inspection Studio", "Comprehensive view displaying executive summaries, findings matrix, and evidence drawer.", "evidenced_present", 0.95),
+            ("n_int_1", "interactions", "Interactive Finding Acceptance & Task Conversion", "Author controls allowing direct conversion of findings into actionable improvement tasks.", "evidenced_present", 0.90),
+            ("n_acc_1", "acceptance_criteria", "Strict Read-Only Public Audit Space", "Public space strictly prevents unauthorized writes and voting during initial release.", "verified_complete", 1.0),
+
+            # Tier 4: Technical Architecture & Data
+            ("n_api_1", "apis", "Review Reservation and Finalization API", "Endpoints /projects/{id}/review/start and background worker lease finalization.", "evidenced_present", 0.95),
+            ("n_db_1", "data_entities", "Relational AI Reviews & Reports Schema", "Durable storage of reviews, findings, immutable snapshots, and evidence citations.", "evidenced_present", 0.95),
+            ("n_sec_1", "security_controls", "Cryptographic BYOK Credential Vault", "AES-256-GCM encryption with authenticated aad tags for user API keys and private repo tokens.", "verified_complete", 1.0),
+
+            # Tier 5: Quality & Reliability
+            ("n_test_1", "tests", "Concurrency & Fenced Worker Lease Test Suite", "Verifies zero active duplicate review sessions and stale lease rejection.", "verified_complete", 1.0),
+            ("n_gap_1", "tests", "Adversarial Prompt Injection Fuzz Testing", "Test coverage for malicious XML tag injections in attached documents.", "not_verified", 0.80),
         ]
 
-        # Seed relationships
+        # Seed relationships across the 8 canonical relationship types
         raw_edges = [
-            ("n_feat_1", "n_prob_1", "addresses"),
-            ("n_feat_2", "n_goal_1", "addresses"),
+            ("n_feat_1", "n_prob_1", "implements"),
+            ("n_feat_2", "n_goal_1", "supports"),
+            ("n_need_1", "n_user_1", "part_of"),
+            ("n_jour_1", "n_need_1", "supports"),
+            ("n_cap_1", "n_feat_1", "implements"),
             ("n_api_1", "n_feat_1", "implements"),
             ("n_db_1", "n_api_1", "depends_on"),
-            ("n_sec_1", "n_api_1", "verifies"),
+            ("n_sec_1", "n_api_1", "validates"),
             ("n_test_1", "n_api_1", "verifies"),
-            ("n_miss_1", "n_feat_1", "depends_on"),
+            ("n_req_1", "n_feat_1", "required_by"),
+            ("n_scr_1", "n_jour_1", "implements"),
+            ("n_int_1", "n_scr_1", "part_of"),
+            ("n_acc_1", "n_sec_1", "validates"),
             ("n_gap_1", "n_sec_1", "verifies"),
         ]
 
@@ -207,24 +240,24 @@ class CompletenessMapService:
                 )
 
     def _build_hierarchy_projection(self, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Decomposes graph into a hierarchical tree: Goals -> Features -> APIs -> Tests."""
-        type_hierarchy = ["goal", "problem", "feature", "requirement", "api", "database_entity", "security_policy", "test_spec"]
-        grouped: Dict[str, List[Dict[str, Any]]] = {t: [] for t in type_hierarchy}
-        for n in nodes:
-            t = n["nodeType"]
-            if t in grouped:
-                grouped[t].append(n)
-            else:
-                grouped.setdefault(t, []).append(n)
+        """Decomposes graph into structured architectural tiers."""
+        tier_definitions = [
+            ("strategy_and_users", "Strategy, Users & Needs", ["product_goals", "goal", "problems", "problem", "target_users", "persona", "user_needs"]),
+            ("journeys_and_capabilities", "Journeys & Capabilities", ["user_journeys", "journey", "capabilities", "features", "feature", "requirements", "requirement"]),
+            ("ux_and_interfaces", "UX & Interface Contracts", ["screens", "screen", "interactions", "acceptance_criteria"]),
+            ("technical_architecture", "Technical Architecture & Data", ["apis", "api", "data_entities", "database_entity", "security_controls", "security_policy"]),
+            ("quality_and_reliability", "Quality & Reliability", ["tests", "test_spec"]),
+        ]
 
         hierarchy: List[Dict[str, Any]] = []
-        for t, items in grouped.items():
-            if items:
+        for tier_key, tier_label, member_types in tier_definitions:
+            tier_items = [n for n in nodes if n["nodeType"] in member_types]
+            if tier_items:
                 hierarchy.append({
-                    "tier": t,
-                    "tierLabel": t.replace("_", " ").title(),
-                    "count": len(items),
-                    "items": items,
+                    "tier": tier_key,
+                    "tierLabel": tier_label,
+                    "count": len(tier_items),
+                    "items": tier_items,
                 })
         return hierarchy
 
@@ -237,6 +270,7 @@ class CompletenessMapService:
 
         table_rows = []
         for n in nodes:
+            has_gap = n["status"] in ("missing", "incomplete", "contradictory", "not_provided", "unclear", "not_verified")
             table_rows.append({
                 "id": n["id"],
                 "type": n["nodeType"],
@@ -245,7 +279,7 @@ class CompletenessMapService:
                 "status": n["status"],
                 "confidenceScore": n["confidenceScore"],
                 "connectedRelations": edge_counts.get(n["id"], 0),
-                "hasGap": n["status"] in ("missing", "incomplete", "contradictory"),
+                "hasGap": has_gap,
             })
         return table_rows
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 from typing import Optional, List, Literal, Union
 from datetime import datetime
-from pydantic import BaseModel, Field, AliasChoices, ConfigDict
+from pydantic import BaseModel, Field, AliasChoices, ConfigDict, computed_field
 
 
 ProjectStatus = Literal['draft', 'ready', 'in_review', 'reviewed', 'archived']
@@ -233,9 +233,24 @@ class RawProjectFindingProposal(BaseModel):
 
 
 class StructuredProjectFeedbackProposal(BaseModel):
-    executive_summary: str = Field(..., min_length=20)
-    strengths_summary: str = Field(..., min_length=20)
+    model_config = ConfigDict(populate_by_name=True)
+
+    executive_summary: str = Field(..., min_length=20, validation_alias=AliasChoices("executiveSummary", "executive_summary"))
+    strengths_summary: str = Field(..., min_length=20, validation_alias=AliasChoices("strengthsSummary", "strengths_summary"))
     findings: List[RawProjectFindingProposal] = Field(..., min_length=1)
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    is_fallback: bool = Field(False, validation_alias=AliasChoices("isFallback", "is_fallback"))
+    fallback_reason: Optional[str] = Field(None, validation_alias=AliasChoices("fallbackReason", "fallback_reason"))
+    execution_mode: str = Field("ai_orchestrated", validation_alias=AliasChoices("executionMode", "execution_mode"))
+
+    @computed_field
+    def executiveSummary(self) -> str:
+        return self.executive_summary
+
+    @computed_field
+    def strengthsSummary(self) -> str:
+        return self.strengths_summary
 
 
 class FindingComparisonItem(BaseModel):
@@ -247,7 +262,7 @@ class FindingComparisonItem(BaseModel):
     category: FindingCategory
     status_in_base: Optional[FindingStatus] = Field(None, validation_alias=AliasChoices("statusInBase", "status_in_base"), serialization_alias="statusInBase")
     status_in_target: Optional[FindingStatus] = Field(None, validation_alias=AliasChoices("statusInTarget", "status_in_target"), serialization_alias="statusInTarget")
-    change_type: Literal['new', 'resolved', 'reopened', 'persisted'] = Field(..., validation_alias=AliasChoices("changeType", "change_type"), serialization_alias="changeType")
+    change_type: Literal['new', 'resolved', 'reopened', 'persisted', 'potentially_resolved', 'not_detected'] = Field(..., validation_alias=AliasChoices("changeType", "change_type"), serialization_alias="changeType")
 
 
 class FeedbackReportComparison(BaseModel):
@@ -298,6 +313,14 @@ class ProjectSourceRead(BaseModel):
 class ProjectRepoLinkRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     repository_url: str = Field(..., validation_alias=AliasChoices("repositoryUrl", "repository_url"), min_length=10)
+    credential_id: Optional[str] = Field(None, validation_alias=AliasChoices("credentialId", "credential_id"))
+    branch: Optional[str] = Field("main", validation_alias=AliasChoices("branch"))
+
+
+class ProjectDesignLinkRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    design_url: str = Field(..., validation_alias=AliasChoices("designUrl", "design_url"), min_length=10)
+    credential_id: Optional[str] = Field(None, validation_alias=AliasChoices("credentialId", "credential_id"))
 
 
 class RAGQueryRequest(BaseModel):
