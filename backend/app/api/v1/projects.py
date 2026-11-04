@@ -9,6 +9,7 @@ from backend.app.schemas.project import (
     ProjectUpdate,
     ProjectRead,
     FindingRead,
+    FindingEvidenceCitationRead,
     FindingStatusUpdate,
     FeedbackReportRead,
     AIReviewStartRequest,
@@ -168,6 +169,15 @@ def update_finding_status(
     """Updates finding resolution status (e.g. Open -> Addressed) (Owner only)."""
     user_id = get_user_id(current_user)
     return project_repo.update_finding_status(finding_id, user_id, payload.status)
+
+
+@router.get("/findings/{finding_id}/citations", response_model=List[FindingEvidenceCitationRead])
+def get_finding_citations(
+    finding_id: str,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """Retrieves all traceable evidence citations (source, snapshot, chunk, line, offsets, quote hash) for a finding."""
+    return project_repo.get_finding_citations(finding_id)
 
 
 @router.post("/projects/{project_id}/review/start", response_model=AIReviewStatusResponse)
@@ -473,6 +483,18 @@ def delete_project_source(
     if not success:
         raise HTTPException(status_code=404, detail="Source not found or unauthorized.")
     return {"deleted": True, "sourceId": source_id}
+
+
+@router.get("/projects/{project_id}/snapshots/{snapshot_id}")
+def get_project_snapshot(
+    project_id: str,
+    snapshot_id: str,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """Retrieves an immutable point-in-time snapshot with full historical sources and context."""
+    user_id = get_user_id(current_user) if current_user else None
+    _ = project_repo.get_project(project_id, requesting_user_id=user_id)
+    return source_ingestion_service.get_project_snapshot(snapshot_id=snapshot_id, project_id=project_id)
 
 
 # =============================================================================

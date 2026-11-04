@@ -427,6 +427,16 @@ def test_finding_action_creates_improvement_task_and_ai_verifies(test_project, a
     )
     assert patch_res.status_code == 200
 
+    # Ingest verified source implementation to ground verification in project code
+    src = source_ingestion_service._ingest_text_or_code(
+        project_id=project_id,
+        owner_id=TEST_USER_ID,
+        filename="wal_handler.py",
+        content_bytes=b"def handle_disconnect():\n    # Missing Write-Ahead Logging in Disconnect Handler resolved\n    journal.append_to_wal_journal()\n    emit_ack()\n",
+        mime_type="text/plain",
+    )
+    rag_engine.index_project_source(src)
+
     # 4. Automated AI verification against project sources
     ver_res = client.post(f"/api/v1/projects/{project_id}/tasks/{task_id}/verify", headers=auth_headers)
     assert ver_res.status_code == 200

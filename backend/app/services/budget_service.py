@@ -40,6 +40,33 @@ class BudgetService:
     def _utc_now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
 
+    def get_budget_or_none(
+        self,
+        user_id: str,
+        scope: str = "account",
+        project_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieves an existing budget if present without auto-creating."""
+        with self.db.session() as conn:
+            query = "SELECT * FROM ai_budgets WHERE user_id = ? AND scope = ?"
+            params: list[Any] = [user_id, scope]
+            if project_id and scope in ("project", "task"):
+                query += " AND project_id = ?"
+                params.append(project_id)
+            else:
+                query += " AND project_id IS NULL"
+            row = conn.execute(query, tuple(params)).fetchone()
+            return self._format_budget(row) if row else None
+
+    def get_user_budgets(self, user_id: str) -> List[Dict[str, Any]]:
+        """Lists all configured spending budgets (account, project, task) for a user."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM ai_budgets WHERE user_id = ? ORDER BY scope ASC, created_at DESC",
+                (user_id,),
+            ).fetchall()
+            return [self._format_budget(r) for r in rows]
+
     def get_or_create_budget(
         self,
         user_id: str,
@@ -112,7 +139,18 @@ class BudgetService:
                     f"committed spend is ${total_proj_committed:.4f}. Request blocked by hard limit."
                 )
 
-        # 3. Atomically reserve estimated cost on account (and project)
+        # 3. Check Task-specific Budget if configured
+        if task_type:
+            task_budget = self.get_budget_or_none(user_id=user_id, scope="task", project_id=project_id)
+            if task_budget and task_budget["hardStopEnabled"]:
+                total_task_committed = task_budget["currentPeriodSpendUsd"] + task_budget["reservedSpendUsd"]
+                if total_task_committed + estimated_cost_usd > task_budget["monthlyLimitUsd"]:
+                    raise BudgetExceededError(
+                        f"Task '{task_type}' AI spending limit exceeded. Task limit is ${task_budget['monthlyLimitUsd']:.2f}, "
+                        f"committed spend is ${total_task_committed:.4f}. Request blocked by hard limit."
+                    )
+
+        # 4. Atomically reserve estimated cost on account (and project/task)
         now = self._utc_now()
         with self.db.session() as conn:
             conn.execute(
@@ -123,6 +161,11 @@ class BudgetService:
                 conn.execute(
                     "UPDATE ai_budgets SET reserved_spend_usd = reserved_spend_usd + ?, updated_at = ? WHERE user_id = ? AND scope = 'project' AND project_id = ?",
                     (estimated_cost_usd, now, user_id, project_id),
+                )
+            if task_type:
+                conn.execute(
+                    "UPDATE ai_budgets SET reserved_spend_usd = reserved_spend_usd + ?, updated_at = ? WHERE user_id = ? AND scope = 'task' AND (project_id = ? OR (project_id IS NULL AND ? IS NULL))",
+                    (estimated_cost_usd, now, user_id, project_id, project_id),
                 )
 
         reservation_token = f"resv_{uuid.uuid4().hex[:12]}:{estimated_cost_usd}"
@@ -222,3 +265,4 @@ class BudgetService:
 
 
 budget_service = BudgetService()
+

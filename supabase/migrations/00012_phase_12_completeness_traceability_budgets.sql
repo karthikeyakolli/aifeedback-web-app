@@ -86,3 +86,4 @@ USING (
         AND p.user_id = auth.uid()
     )
 );
+

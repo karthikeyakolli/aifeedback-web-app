@@ -155,6 +155,25 @@ class ProjectAttachmentRead(BaseModel):
     created_at: Union[datetime, str] = Field(..., validation_alias=AliasChoices("createdAt", "created_at"), serialization_alias="createdAt")
 
 
+class FindingEvidenceCitationRead(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    finding_id: str = Field(..., validation_alias=AliasChoices("findingId", "finding_id"), serialization_alias="findingId")
+    source_id: Optional[str] = Field(None, validation_alias=AliasChoices("sourceId", "source_id"), serialization_alias="sourceId")
+    snapshot_id: Optional[str] = Field(None, validation_alias=AliasChoices("snapshotId", "snapshot_id"), serialization_alias="snapshotId")
+    chunk_id: Optional[str] = Field(None, validation_alias=AliasChoices("chunkId", "chunk_id"), serialization_alias="chunkId")
+    page_number: Optional[int] = Field(None, validation_alias=AliasChoices("pageNumber", "page_number"), serialization_alias="pageNumber")
+    line_start: Optional[int] = Field(None, validation_alias=AliasChoices("lineStart", "line_start"), serialization_alias="lineStart")
+    line_end: Optional[int] = Field(None, validation_alias=AliasChoices("lineEnd", "line_end"), serialization_alias="lineEnd")
+    char_offset_start: Optional[int] = Field(None, validation_alias=AliasChoices("charOffsetStart", "char_offset_start"), serialization_alias="charOffsetStart")
+    char_offset_end: Optional[int] = Field(None, validation_alias=AliasChoices("charOffsetEnd", "char_offset_end"), serialization_alias="charOffsetEnd")
+    canonical_quote: str = Field(..., validation_alias=AliasChoices("canonicalQuote", "canonical_quote"), serialization_alias="canonicalQuote")
+    content_hash: Optional[str] = Field(None, validation_alias=AliasChoices("contentHash", "content_hash"), serialization_alias="contentHash")
+    validation_result: str = Field("valid", validation_alias=AliasChoices("validationResult", "validation_result"), serialization_alias="validationResult")
+    created_at: Union[datetime, str] = Field(..., validation_alias=AliasChoices("createdAt", "created_at"), serialization_alias="createdAt")
+
+
 class FindingRead(BaseModel):
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
@@ -169,6 +188,7 @@ class FindingRead(BaseModel):
     recommendation: str
     status: FindingStatus = 'open'
     resolved_at: Optional[Union[datetime, str]] = Field(None, validation_alias=AliasChoices("resolvedAt", "resolved_at"), serialization_alias="resolvedAt")
+    citations: List[FindingEvidenceCitationRead] = Field(default_factory=list)
     created_at: Union[datetime, str] = Field(..., validation_alias=AliasChoices("createdAt", "created_at"), serialization_alias="createdAt")
 
 

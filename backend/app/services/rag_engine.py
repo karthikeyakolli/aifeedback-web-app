@@ -105,7 +105,7 @@ class AdvancedRAGEngine:
                 if not clean_text or len(clean_text) < 15:
                     continue
 
-                chunk_id = f"chk_{source_id[:8]}_{idx}"
+                chunk_id = f"chk_{source_id}_{idx}"
                 embedding = self.generate_embedding(clean_text)
                 token_count = len(clean_text.split())
 

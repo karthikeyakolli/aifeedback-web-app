@@ -351,6 +351,20 @@ class AIOrchestratorService:
 
         focus_str = f"Specific Focus Areas: {', '.join(focus_areas)}\n" if focus_areas else ""
 
+        # Retrieve active design links and visual assets to ground prompt in multimodal specifications
+        active_assets_str = ""
+        with db_manager.session() as conn:
+            proj_id = project.get("id")
+            if proj_id:
+                asset_rows = conn.execute(
+                    "SELECT source_type, name, content_text FROM project_sources WHERE project_id = ? AND is_active = 1",
+                    (proj_id,),
+                ).fetchall()
+                if asset_rows:
+                    active_assets_str = "\nActive UI Designs, Specifications & Architecture Assets:\n"
+                    for ar in asset_rows:
+                        active_assets_str += f"- [{ar['source_type'].upper()}] {ar['name']}: {ar['content_text'][:350]}\n"
+
         return (
             f"<project_context>\n"
             f"Project Name: {name}\n"
@@ -361,6 +375,7 @@ class AIOrchestratorService:
             f"{focus_str}\n"
             f"Technical Specification & Overview:\n"
             f"{description}\n"
+            f"{active_assets_str}"
             f"</project_context>\n\n"
             f"TASK: Analyze the project context above according to the 5 evaluation criteria. "
             f"Produce an executive summary, strengths summary, and a list of actionable findings with exact evidence quotes."
@@ -418,6 +433,44 @@ class AIOrchestratorService:
                 ),
             ),
         ]
+
+        # Inspect active sources to ground findings in design system (Figma/Canva) and visual layouts (screenshots/diagrams)
+        with db_manager.session() as conn:
+            proj_id = project.get("id")
+            if proj_id:
+                design_row = conn.execute(
+                    "SELECT content_text FROM project_sources WHERE project_id = ? AND is_active = 1 AND source_type = 'design_link' LIMIT 1",
+                    (proj_id,),
+                ).fetchone()
+                if design_row:
+                    d_quote = clean_evidence_quote(design_row["content_text"][:120].strip())
+                    findings.append(
+                        RawProjectFindingProposal(
+                            title="Validate Design System Color Contrast and Responsive Grid Hierarchy",
+                            severity="medium",
+                            category="accessibility",
+                            observation="Design specifications indicate responsive layout grid tokens. Verify that typographic color contrast meets WCAG 2.2 AA (4.5:1 ratio) across dark and light themes.",
+                            evidence_quote=d_quote,
+                            recommendation="Enforce design token contrast verification in Figma/Canva component library prior to production release.",
+                        )
+                    )
+
+                vis_row = conn.execute(
+                    "SELECT content_text FROM project_sources WHERE project_id = ? AND is_active = 1 AND source_type IN ('screenshot', 'diagram') LIMIT 1",
+                    (proj_id,),
+                ).fetchone()
+                if vis_row:
+                    v_quote = clean_evidence_quote(vis_row["content_text"][:120].strip())
+                    findings.append(
+                        RawProjectFindingProposal(
+                            title="Audit Visual Architecture Diagram Component Boundaries",
+                            severity="low",
+                            category="architecture",
+                            observation="Visual diagram and screenshot assets define system topology. Ensure interactive component boundaries maintain isolated failure domains.",
+                            evidence_quote=v_quote,
+                            recommendation="Decouple visual component state from backend streaming channels using isolated React error boundaries.",
+                        )
+                    )
 
         return StructuredProjectFeedbackProposal(
             executive_summary=(

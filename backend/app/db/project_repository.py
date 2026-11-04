@@ -286,7 +286,8 @@ class ProjectRepository:
             updated_row = conn.execute(
                 "SELECT * FROM feedback_findings WHERE id = ?", (finding_id,)
             ).fetchone()
-            return self._serialize_finding(updated_row)
+            cit_map = self._fetch_finding_citations_map(conn, [finding_id])
+            return self._serialize_finding(updated_row, cit_map.get(finding_id, []))
 
     # -------------------------------------------------------------------------
     # AI Reviews & Feedback Reports (Phase 2 Concurrency & Durable Execution)
@@ -526,11 +527,15 @@ class ProjectRepository:
                 ),
             )
 
-            # 4. Bulk insert findings with default 'open' status and record evidence citations
+            # 4. Bulk insert findings with default 'open' status and record granular evidence citations
             snap_row = conn.execute("SELECT id FROM project_source_snapshots WHERE review_id = ? LIMIT 1", (review_id,)).fetchone()
             snapshot_id = snap_row["id"] if snap_row else None
-            src_row = conn.execute("SELECT id FROM project_sources WHERE project_id = ? AND is_active = 1 LIMIT 1", (project_id,)).fetchone()
-            active_src_id = src_row["id"] if src_row else None
+
+            # Retrieve active sources for project to locate exact line and character offsets
+            active_sources = conn.execute(
+                "SELECT id, content_text FROM project_sources WHERE project_id = ? AND is_active = 1",
+                (project_id,),
+            ).fetchall()
 
             for f in findings_data:
                 finding_id = str(uuid.uuid4())
@@ -553,14 +558,58 @@ class ProjectRepository:
                 if evidence_q:
                     cit_id = f"cit_{uuid.uuid4().hex[:12]}"
                     c_hash = hashlib.sha256(evidence_q.encode("utf-8")).hexdigest()
+
+                    # Find exact source, chunk, line range and character offsets
+                    src_id = None
+                    chunk_id = None
+                    page_num = 1
+                    line_start = None
+                    line_end = None
+                    char_start = None
+                    char_end = None
+
+                    # 1. Check if there is an exact or substring match in active sources
+                    for s_row in active_sources:
+                        content_text = s_row["content_text"]
+                        idx = content_text.find(evidence_q)
+                        if idx != -1:
+                            src_id = s_row["id"]
+                            char_start = idx
+                            char_end = idx + len(evidence_q)
+                            preceding = content_text[:idx]
+                            line_start = preceding.count("\n") + 1
+                            line_end = line_start + evidence_q.count("\n")
+                            break
+
+                    # 2. Check project_knowledge_chunks for matching chunk
+                    chunk_row = conn.execute(
+                        "SELECT id, source_id, page_number, line_start, line_end FROM project_knowledge_chunks WHERE project_id = ? AND clean_content LIKE ? LIMIT 1",
+                        (project_id, f"%{evidence_q[:40]}%"),
+                    ).fetchone()
+                    if chunk_row:
+                        chunk_id = chunk_row["id"]
+                        if not src_id:
+                            src_id = chunk_row["source_id"]
+                        if chunk_row["page_number"]:
+                            page_num = chunk_row["page_number"]
+                        if not line_start and chunk_row["line_start"]:
+                            line_start = chunk_row["line_start"]
+                            line_end = chunk_row["line_end"]
+
                     try:
                         conn.execute(
                             """
                             INSERT INTO finding_evidence_citations (
-                                id, finding_id, source_id, snapshot_id, canonical_quote, content_hash, validation_result, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, 'valid', ?)
+                                id, finding_id, source_id, snapshot_id, chunk_id,
+                                page_number, line_start, line_end, char_offset_start, char_offset_end,
+                                canonical_quote, content_hash, validation_result, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'valid', ?)
                             """,
-                            (cit_id, finding_id, active_src_id, snapshot_id, evidence_q, c_hash, now),
+                            (
+                                cit_id, finding_id, src_id, snapshot_id, chunk_id,
+                                page_num, line_start, line_end, char_start, char_end,
+                                evidence_q, c_hash, now,
+                            ),
                         )
                     except Exception as cit_err:
                         logger.warning("Failed to record finding_evidence_citations: %s", cit_err)
@@ -835,8 +884,8 @@ class ProjectRepository:
                 "SELECT * FROM feedback_findings WHERE report_id = ? ORDER BY CASE severity WHEN 'blocker' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END",
                 (report_id,),
             ).fetchall()
-
-            return self._serialize_report(row, [self._serialize_finding(f) for f in findings_rows])
+            cit_map = self._fetch_finding_citations_map(conn, [f["id"] for f in findings_rows])
+            return self._serialize_report(row, [self._serialize_finding(f, cit_map.get(f["id"], [])) for f in findings_rows])
 
     def get_latest_feedback_report_for_project(
         self,
@@ -872,7 +921,8 @@ class ProjectRepository:
                 "SELECT * FROM feedback_findings WHERE report_id = ? ORDER BY CASE severity WHEN 'blocker' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END",
                 (report_id,),
             ).fetchall()
-            return self._serialize_report(row, [self._serialize_finding(f) for f in findings_rows])
+            cit_map = self._fetch_finding_citations_map(conn, [f["id"] for f in findings_rows])
+            return self._serialize_report(row, [self._serialize_finding(f, cit_map.get(f["id"], [])) for f in findings_rows])
 
     def get_feedback_report_by_review_id(
         self,
@@ -907,7 +957,8 @@ class ProjectRepository:
                     "SELECT * FROM feedback_findings WHERE report_id = ? ORDER BY CASE severity WHEN 'blocker' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END",
                     (r["id"],),
                 ).fetchall()
-                results.append(self._serialize_report(r, [self._serialize_finding(f) for f in findings_rows]))
+                cit_map = self._fetch_finding_citations_map(conn, [f["id"] for f in findings_rows])
+                results.append(self._serialize_report(r, [self._serialize_finding(f, cit_map.get(f["id"], [])) for f in findings_rows]))
             return results
 
     def generate_report_markdown_export(
@@ -999,7 +1050,48 @@ class ProjectRepository:
             "updatedAt": row["updated_at"],
         }
 
-    def _serialize_finding(self, row: sqlite3.Row) -> Dict[str, Any]:
+    def _serialize_citation(self, row: sqlite3.Row) -> Dict[str, Any]:
+        keys = row.keys()
+        return {
+            "id": row["id"],
+            "findingId": row["finding_id"],
+            "sourceId": row["source_id"] if "source_id" in keys else None,
+            "snapshotId": row["snapshot_id"] if "snapshot_id" in keys else None,
+            "chunkId": row["chunk_id"] if "chunk_id" in keys else None,
+            "pageNumber": row["page_number"] if "page_number" in keys else None,
+            "lineStart": row["line_start"] if "line_start" in keys else None,
+            "lineEnd": row["line_end"] if "line_end" in keys else None,
+            "charOffsetStart": row["char_offset_start"] if "char_offset_start" in keys else None,
+            "charOffsetEnd": row["char_offset_end"] if "char_offset_end" in keys else None,
+            "canonicalQuote": row["canonical_quote"],
+            "contentHash": row["content_hash"] if "content_hash" in keys else None,
+            "validationResult": row["validation_result"] if "validation_result" in keys else "valid",
+            "createdAt": row["created_at"],
+        }
+
+    def _fetch_finding_citations_map(self, conn: sqlite3.Connection, finding_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+        if not finding_ids:
+            return {}
+        placeholders = ",".join("?" for _ in finding_ids)
+        cit_rows = conn.execute(
+            f"SELECT * FROM finding_evidence_citations WHERE finding_id IN ({placeholders}) ORDER BY created_at ASC",
+            tuple(finding_ids),
+        ).fetchall()
+        cit_map: Dict[str, List[Dict[str, Any]]] = {}
+        for r in cit_rows:
+            fid = r["finding_id"]
+            cit_map.setdefault(fid, []).append(self._serialize_citation(r))
+        return cit_map
+
+    def get_finding_citations(self, finding_id: str) -> List[Dict[str, Any]]:
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM finding_evidence_citations WHERE finding_id = ? ORDER BY created_at ASC",
+                (finding_id,),
+            ).fetchall()
+            return [self._serialize_citation(r) for r in rows]
+
+    def _serialize_finding(self, row: sqlite3.Row, citations: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         return {
             "id": row["id"],
             "reportId": row["report_id"],
@@ -1012,6 +1104,7 @@ class ProjectRepository:
             "recommendation": row["recommendation"],
             "status": row["status"],
             "resolvedAt": row["resolved_at"],
+            "citations": citations or [],
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }

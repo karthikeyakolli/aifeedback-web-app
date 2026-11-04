@@ -15,12 +15,14 @@ from backend.app.api.v1.dev import router as dev_router
 from backend.app.api.v1.projects import router as feedback_projects_router
 from backend.app.api.v1.creator import router as creator_router
 from backend.app.api.v1.credentials import router as credentials_router
+from backend.app.api.v1.budgets import router as budgets_router
 
 api_v1_router = APIRouter()
 
 api_v1_router.include_router(health_router)
 api_v1_router.include_router(auth_router)
 api_v1_router.include_router(credentials_router)
+api_v1_router.include_router(budgets_router)
 api_v1_router.include_router(feedback_projects_router)
 api_v1_router.include_router(creator_router)
 api_v1_router.include_router(posts_router)

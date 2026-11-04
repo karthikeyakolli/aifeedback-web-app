@@ -429,6 +429,18 @@ class SourceIngestionService:
         else:
             results = self._fetch_gitlab_repository(project_id, owner_id, org, repo, auth_token=auth_token, branch=branch)
 
+        # Deletion detection: mark absent repository files as inactive
+        with self.db.session() as conn:
+            prev_sources = conn.execute(
+                "SELECT id, original_filename FROM project_sources WHERE project_id = ? AND is_active = 1 AND name LIKE ?",
+                (project_id, f"%{org}/{repo}%"),
+            ).fetchall()
+            current_filenames = {s["originalFilename"] for s in results}
+            for ps in prev_sources:
+                if ps["original_filename"] not in current_filenames:
+                    conn.execute("UPDATE project_sources SET is_active = 0, updated_at = ? WHERE id = ?", (now, ps["id"]))
+                    logger.info("Marked deleted repository file as inactive: %s", ps["original_filename"])
+
         # Update git repository sync status
         sync_id = sync_row["id"] if sync_row else f"sync_{uuid.uuid4().hex[:12]}"
         with self.db.session() as conn:
@@ -476,6 +488,11 @@ class SourceIngestionService:
                     url = f"https://raw.githubusercontent.com/{org}/{repo}/{b}/{filename}"
                     try:
                         resp = client.get(url)
+                        if auth_token and resp.status_code in (401, 403):
+                            raise HTTPException(
+                                status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Git token revoked or unauthorized. Access to private repository denied.",
+                            )
                         if resp.status_code == 200 and len(resp.text.strip()) > 20:
                             source = self._ingest_text_or_code(
                                 project_id=project_id,
@@ -522,6 +539,11 @@ class SourceIngestionService:
                     url = f"https://gitlab.com/{org}/{repo}/-/raw/{b}/{filename}"
                     try:
                         resp = client.get(url)
+                        if auth_token and resp.status_code in (401, 403):
+                            raise HTTPException(
+                                status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="GitLab token revoked or unauthorized. Access to private repository denied.",
+                            )
                         if resp.status_code == 200 and len(resp.text.strip()) > 20:
                             source = self._ingest_text_or_code(
                                 project_id=project_id,
@@ -747,6 +769,29 @@ class SourceIngestionService:
             "chatContext": chat_context,
             "createdAt": now,
         }
+
+    def get_project_snapshot(self, snapshot_id: str, project_id: Optional[str] = None) -> Dict[str, Any]:
+        """Retrieves an immutable point-in-time snapshot with full historical sources and context."""
+        with self.db.session() as conn:
+            query = "SELECT * FROM project_source_snapshots WHERE id = ?"
+            params = [snapshot_id]
+            if project_id:
+                query += " AND project_id = ?"
+                params.append(project_id)
+            row = conn.execute(query, tuple(params)).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Snapshot not found")
+            parsed_data = json.loads(row["snapshot_data_json"] or "{}")
+            return {
+                "id": row["id"],
+                "reviewId": row["review_id"],
+                "projectId": row["project_id"],
+                "totalSources": parsed_data.get("totalSources", len(parsed_data.get("sources", []))),
+                "totalChatMessages": parsed_data.get("totalChatMessages", len(parsed_data.get("chatContext", []))),
+                "sources": parsed_data.get("sources", []),
+                "chatContext": parsed_data.get("chatContext", []),
+                "createdAt": row["created_at"],
+            }
 
     def list_project_sources(self, project_id: str, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Lists active sources belonging to a project."""

@@ -378,11 +378,12 @@ class ProjectChatAndWorkflowService:
             project_id = task["project_id"]
             finding_id = task["finding_id"]
 
-            # Query project knowledge base to confirm whether corrective patterns exist in sources
+            # Query project knowledge base to confirm whether corrective patterns exist in project sources
             evidence = rag_engine.hybrid_search(
                 project_id=project_id,
                 query=f"{task['title']} {task['description']}",
                 top_k=3,
+                include_reference_kb=False,
             )
 
             # Determine verification outcome
