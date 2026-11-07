@@ -3,9 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "description": "AI Project Feedback — Integrated AI-Powered Product Development and Auditing Platform",
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
     "dev": "npm --prefix frontend run dev",
-    "build": "npm --prefix frontend run build",
+    "build": "npm --prefix frontend install && npm --prefix frontend run build && node -e \"const fs=require('fs'); if(fs.existsSync('frontend/dist')){fs.cpSync('frontend/dist', 'dist', {recursive: true});}\"",
     "preview": "npm --prefix frontend run preview",
     "lint": "npm --prefix frontend run lint",
     "test": "npm run test:backend",
