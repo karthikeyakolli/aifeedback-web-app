@@ -1,7 +1,8 @@
 # FeedbackAI Production Backend Dependencies
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
-pydantic>=2.8.0
+pydantic[email]>=2.8.0
+email-validator>=2.0.0
 httpx>=0.27.0
 python-dotenv>=1.0.0
 pyjwt>=2.9.0
@@ -11,4 +12,3 @@ groq>=0.11.0
 fpdf2>=2.8.0
 pypdf>=5.0.0
 psycopg2-binary>=2.9.9
-
