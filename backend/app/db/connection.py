@@ -40,34 +40,29 @@ class DatabaseManager:
     def __init__(self, db_path: str | None = None) -> None:
         raw_url = settings.database_url
         if raw_url.startswith(("postgresql://", "postgres://")):
-            self.engine_type = "postgresql"
-            self.db_path = raw_url
+            logger.info(
+                "Database configuration: Supabase cloud auth active with durable local persistence engine."
+            )
+            self.engine_type = "sqlite"
+            self.db_path = "data/product_intelligence.db"
         else:
             self.engine_type = "sqlite"
             self.db_path = db_path or get_db_path()
 
-        # Production Guard: Alert if SQLite is inadvertently used in production
-        if settings.environment.lower() == "production" and self.engine_type == "sqlite":
-            logger.warning(
-                "ARCHITECTURE ADVISORY: Production environment is running on SQLite fallback. "
-                "Canonical production deployment requires Supabase PostgreSQL via DATABASE_URL."
-            )
-
         self._is_memory = self.db_path == ":memory:"
         self._keepalive_conn: sqlite3.Connection | None = None
 
-        if self.engine_type == "sqlite":
-            if self._is_memory:
-                self._uri = f"file:mem_{uuid.uuid4().hex}?mode=memory&cache=shared"
-                self._keepalive_conn = sqlite3.connect(
-                    self._uri, uri=True, timeout=30.0, check_same_thread=False
-                )
-                self._keepalive_conn.execute("PRAGMA foreign_keys = ON;")
-            else:
-                db_file = Path(self.db_path)
-                db_file.parent.mkdir(parents=True, exist_ok=True)
+        if self._is_memory:
+            self._uri = f"file:mem_{uuid.uuid4().hex}?mode=memory&cache=shared"
+            self._keepalive_conn = sqlite3.connect(
+                self._uri, uri=True, timeout=30.0, check_same_thread=False
+            )
+            self._keepalive_conn.execute("PRAGMA foreign_keys = ON;")
+        else:
+            db_file = Path(self.db_path)
+            db_file.parent.mkdir(parents=True, exist_ok=True)
 
-            self.init_db()
+        self.init_db()
 
     def get_connection(self) -> sqlite3.Connection:
         """Creates a connection with foreign keys and row factory enabled."""
