@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient, type Session } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bwqeprsagyrkxwpxdfvk.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_s-udRx2zwO7Pp82G-LwsyA_LZotShwZ';
 
 // Detect if real Supabase credentials have been configured (not placeholder strings)
 export const isSupabaseConfigured = (): boolean => {

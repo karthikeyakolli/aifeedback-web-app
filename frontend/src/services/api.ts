@@ -58,7 +58,7 @@ import type {
   ProjectChangelogEntry,
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://aifeedback-web-app.onrender.com/api/v1' : '/api/v1');
 
 export const TOKEN_STORAGE_KEY = 'pri_auth_token';
 const LOCAL_PROJECTS_KEY = 'pri_local_projects';
