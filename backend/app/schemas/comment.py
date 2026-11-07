@@ -66,4 +66,23 @@ class CommentVoteResponse(BaseModel):
     userHasUpvoted: bool
 
 
+class PublicCommentRecent(BaseModel):
+    """Schema for recent public community comments displayed on homepage and Global Discussions Lounge."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    postId: str = Field(..., validation_alias=AliasChoices("postId", "post_id"))
+    content: str
+    upvotesCount: int = Field(0, validation_alias=AliasChoices("upvotesCount", "upvotes_count"))
+    createdAt: str = Field(..., validation_alias=AliasChoices("createdAt", "created_at"))
+    projectTitle: str = Field("Project Community", validation_alias=AliasChoices("projectTitle", "project_title"))
+    projectId: str = Field(..., validation_alias=AliasChoices("projectId", "project_id"))
+    category: str = Field("General", validation_alias=AliasChoices("category"))
+    username: str
+    displayName: str = Field(..., validation_alias=AliasChoices("displayName", "display_name"))
+    avatarUrl: Optional[str] = Field(None, validation_alias=AliasChoices("avatarUrl", "avatar_url"))
+    isAnonymous: bool = Field(False, validation_alias=AliasChoices("isAnonymous", "is_anonymous"))
+    userHasUpvoted: bool = Field(False, validation_alias=AliasChoices("userHasUpvoted", "user_has_upvoted"))
+
+
 CommentResponse.model_rebuild()

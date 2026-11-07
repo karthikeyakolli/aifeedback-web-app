@@ -15,6 +15,8 @@ export const AppLayout: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { isLoading } = useAuth();
 
+  const isHomePage = location.pathname === '/';
+
   // Persistent sidebar collapse state (68-72px vs 240-256px)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     return localStorage.getItem('pri_sidebar_collapsed') === 'true';
@@ -43,33 +45,28 @@ export const AppLayout: React.FC = () => {
     });
   };
 
-  // Determine container maximum width based on page type (Section 5 requirement)
+  // Determine container maximum width based on page type
   const getContentContainerClass = (): string => {
+    if (isHomePage) {
+      return 'w-full p-0 m-0';
+    }
+
     const path = location.pathname;
     const tab = searchParams.get('tab');
 
-    // Research Studio 3-pane workspace gets fluid/ultra-wide layout
     if (path.startsWith('/posts/') && tab === 'insights') {
-      return 'max-w-[1600px] px-3 sm:px-6';
+      return 'max-w-[1600px] px-3 sm:px-6 py-6';
     }
 
-    // Feedback Report & Grounded Studio gets wide readable canvas
-    if (path.includes('/feedback') || path.includes('/review')) {
-      return 'max-w-[1400px] px-4 sm:px-6';
+    if (path.includes('/feedback') || path.includes('/review') || path.startsWith('/projects/')) {
+      return 'max-w-[1400px] px-4 sm:px-6 py-6';
     }
 
-    // Discussion reading & composition gets focused reading layout
-    if (path.startsWith('/posts/')) {
-      return 'max-w-4xl px-4 sm:px-6';
-    }
-
-    // Moderation queue & reports get broad administrative layout
     if (path.startsWith('/moderation')) {
-      return 'max-w-7xl px-4 sm:px-6';
+      return 'max-w-7xl px-4 sm:px-6 py-6';
     }
 
-    // Standard community feed & explore grids
-    return 'max-w-6xl px-4 sm:px-6';
+    return 'max-w-6xl px-4 sm:px-6 py-6';
   };
 
   if (isLoading) {
@@ -85,19 +82,18 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen flex bg-[var(--canvas)] text-[var(--text-primary)] transition-colors antialiased">
-      {/* Desktop Sidebar (250px expanded or 72px collapsed rail) */}
-      <Sidebar
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={toggleSidebarCollapse}
-      />
+      {/* Desktop Sidebar: Hidden on Homepage for immersive full-width SaaS landing experience */}
+      {!isHomePage && (
+        <Sidebar
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapse}
+        />
+      )}
 
       {/* Main Content Column */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-        {/* Top Header (64px) with Breadcrumbs and Space Indicator */}
-        <Header
-          onOpenMobileMenu={() => setIsMobileDrawerOpen(true)}
-          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-        />
+        {/* Header: Rendered exclusively on the Hero Landing Page per design requirement */}
+        {isHomePage && <Header />}
 
         {/* Global Keyboard Command Palette (Cmd+K / Ctrl+K) */}
         <CommandPalette
@@ -111,25 +107,25 @@ export const AppLayout: React.FC = () => {
           onClose={() => setIsMobileDrawerOpen(false)}
         />
 
-        {/* Center Canvas + Contextual Right Inspector Split Layout (1fr / 320px) */}
+        {/* Center Canvas */}
         <div className="flex-1 flex min-w-0">
           <main
             id="main-content"
             tabIndex={-1}
-            className={`flex-1 w-full mx-auto py-6 pb-24 md:pb-12 transition-all ${getContentContainerClass()}`}
+            className={`flex-1 w-full mx-auto transition-all ${getContentContainerClass()}`}
           >
             <Outlet />
           </main>
 
-          {/* Contextual Right Inspector Panel (Collapsible 280-340px) */}
-          <RightInspector />
+          {/* Contextual Right Inspector Panel (Only in internal workspaces, never on homepage) */}
+          {!isHomePage && <RightInspector />}
         </div>
 
-        {/* Application Footer */}
-        <Footer />
+        {/* App Footer: Rendered on internal pages. On homepage, HomePage renders its own rich HomeFooter */}
+        {!isHomePage && <Footer />}
 
         {/* Mobile Bottom Navigation Bar (< 640px) */}
-        <MobileNav onOpenMenu={() => setIsMobileDrawerOpen(true)} />
+        {!isHomePage && <MobileNav onOpenMenu={() => setIsMobileDrawerOpen(true)} />}
       </div>
     </div>
   );

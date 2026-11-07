@@ -655,7 +655,7 @@ export interface GenerateReviewRequest {
 // -----------------------------------------------------------------------------
 // Phase 2, 3 & 4 Project Foundation Types
 // -----------------------------------------------------------------------------
-export type ProjectStatus = 'draft' | 'ready' | 'in_review' | 'reviewed' | 'archived';
+export type ProjectStatus = 'draft' | 'ready' | 'in_review' | 'reviewed' | 'archived' | 'published';
 
 export type ProjectCategory =
   | 'developer-tools'
@@ -664,7 +664,10 @@ export type ProjectCategory =
   | 'design-ux'
   | 'saas-b2b'
   | 'mobile'
-  | 'infrastructure';
+  | 'infrastructure'
+  | 'education'
+  | 'entertainment'
+  | 'other';
 
 export interface Project {
   id: string;
@@ -690,6 +693,7 @@ export interface ProjectCreatePayload {
   description?: string;
   repositoryUrl?: string | null;
   demoUrl?: string | null;
+  isPublic?: boolean;
 }
 
 export interface ProjectUpdatePayload {
@@ -823,12 +827,51 @@ export interface PublicProject {
   category: ProjectCategory;
   repositoryUrl?: string | null;
   demoUrl?: string | null;
+  logoUrl?: string | null;
+  coverUrl?: string | null;
   status: ProjectStatus;
   isPublic: boolean;
   upvotesCount: number;
   reviewsCount: number;
   creatorUsername?: string | null;
   creatorDisplayName?: string | null;
+  creatorAvatarUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicCommentRecent {
+  id: string;
+  postId: string;
+  content: string;
+  upvotesCount: number;
+  createdAt: string;
+  projectTitle: string;
+  projectId: string;
+  category: string;
+  username: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  isAnonymous?: boolean;
+  userHasUpvoted?: boolean;
+}
+
+export interface ProjectApkRelease {
+  id: string;
+  projectId: string;
+  userId: string;
+  versionName: string;
+  versionCode: number;
+  releaseNotes: string;
+  fileName: string;
+  fileSizeBytes: number;
+  fileSha256: string;
+  packageName?: string;
+  minSdkVersion?: number;
+  targetSdkVersion?: number;
+  status: 'quarantined' | 'verified' | 'published' | 'revoked';
+  quarantineReason?: string | null;
+  downloadCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1133,8 +1176,14 @@ export interface ProjectChatMessage {
     sourceName?: string;
     quote?: string;
     clean_quote?: string;
+    cleanQuote?: string;
     relevance_percentage?: number;
     relevancePercentage?: number;
+    sourceType?: string;
+    url?: string;
+    domain?: string;
+    pageNumber?: number;
+    sectionHeading?: string;
   }>;
   classification: string;
   metadata?: Record<string, any>;
@@ -1185,5 +1234,20 @@ export interface BudgetUpdatePayload {
   monthlyLimitUsd: number;
   warningThresholdPct?: number;
   hardStopEnabled?: boolean;
+}
+
+export interface ProjectChangelogEntry {
+  id: string;
+  projectId: string;
+  userId: string;
+  versionTag: string;
+  title: string;
+  description: string;
+  findingId?: string | null;
+  findingTitle?: string | null;
+  findingSeverity?: string | null;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 

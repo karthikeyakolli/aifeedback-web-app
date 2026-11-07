@@ -47,11 +47,11 @@ export const VerifyEmailPage: React.FC = () => {
         {/* Brand */}
         <div className="flex justify-center">
           <Link to="/" className="inline-flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white shadow-xs">
               <Sparkles className="w-5 h-5" />
             </div>
-            <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-white">
-              ResearchIntel
+            <span className="font-extrabold text-base tracking-tight text-[var(--text-primary)]">
+              FeedbackAI
             </span>
           </Link>
         </div>

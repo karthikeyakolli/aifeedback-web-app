@@ -63,7 +63,9 @@ data/*.db-shm
 data/*.db-wal
 data/*.sqlite
 
-# Logs & OS artifacts
+# Graphify cache
+graphify-out/cache/
+
 *.log
 .DS_Store
 Thumbs.db

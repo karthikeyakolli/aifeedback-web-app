@@ -43,3 +43,19 @@ export function formatCleanText(text: string | null | undefined, stripLeadingBul
   s = s.replace(/[ \t]+/g, ' ').trim();
   return s;
 }
+
+export function formatCategoryLabel(category?: string | null): string {
+  if (!category) return 'General';
+  const map: Record<string, string> = {
+    'developer-tools': 'Developer Tools',
+    'productivity': 'Productivity',
+    'ai-ml': 'AI & ML',
+    'design-ux': 'Design & UX',
+    'saas-b2b': 'Business & SaaS',
+    'mobile': 'Mobile Apps',
+    'infrastructure': 'Infrastructure',
+    'education': 'Education',
+    'entertainment': 'Entertainment',
+  };
+  return map[category] || category.charAt(0).toUpperCase() + category.slice(1);
+}

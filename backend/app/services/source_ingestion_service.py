@@ -829,6 +829,117 @@ class SourceIngestionService:
             )
             return res.rowcount > 0
 
+    def ingest_project_web_links(
+        self,
+        project_id: str,
+        owner_id: str,
+        repo_url: Optional[str] = None,
+        demo_url: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Auto-ingests GitHub README and live demo landing page metadata into project knowledge chunks."""
+        ingested: List[Dict[str, Any]] = []
+        now = self._utc_now()
+
+        # 1. Ingest GitHub README if repository_url points to GitHub
+        if repo_url and "github.com" in repo_url.lower():
+            try:
+                clean_repo = validate_external_url(repo_url)
+                gh_match = re.match(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git|/)?$", clean_repo)
+                if gh_match:
+                    org, repo = gh_match.group(1), gh_match.group(2)
+                    readme_text = None
+
+                    # Try main, then master branch
+                    for br in ("main", "master"):
+                        raw_readme_url = f"https://raw.githubusercontent.com/{org}/{repo}/{br}/README.md"
+                        try:
+                            with httpx.Client(timeout=5.0) as client:
+                                resp = client.get(raw_readme_url)
+                                if resp.status_code == 200 and len(resp.text) > 20:
+                                    readme_text = resp.text
+                                    break
+                        except Exception:
+                            continue
+
+                    if readme_text:
+                        clean_readme = clean_input_text(readme_text[:40000])
+                        src_id = f"src_gh_{uuid.uuid4().hex[:10]}"
+                        meta = {
+                            "repo_url": clean_repo,
+                            "org": org,
+                            "repo": repo,
+                            "is_github_readme": True,
+                        }
+                        with self.db.session() as conn:
+                            conn.execute(
+                                """
+                                INSERT INTO project_sources (
+                                    id, project_id, owner_id, source_type, name, original_filename,
+                                    file_size, mime_type, storage_path, content_text, metadata_json,
+                                    version, is_active, created_at, updated_at
+                                ) VALUES (?, ?, ?, 'spec_doc', 'GitHub Repository README.md', 'README.md',
+                                          ?, 'text/markdown', '', ?, ?, 1, 1, ?, ?)
+                                """,
+                                (src_id, project_id, owner_id, len(clean_readme), clean_readme, json.dumps(meta), now, now),
+                            )
+                        source_rec = self.get_project_source(src_id, owner_id)
+                        rag_engine.index_project_source(source_rec)
+                        ingested.append(source_rec)
+            except Exception as gh_err:
+                logger.warning("GitHub README auto-ingestion skipped for project %s: %s", project_id, gh_err)
+
+        # 2. Ingest Live Demo URL metadata & page architecture
+        if demo_url:
+            try:
+                clean_demo = validate_external_url(demo_url)
+                with httpx.Client(timeout=5.0, follow_redirects=True) as client:
+                    resp = client.get(clean_demo, headers={"User-Agent": "FeedbackAI-SpecCrawler/1.0"})
+                    if resp.status_code == 200:
+                        html = resp.text
+                        # Extract title and meta description
+                        title_m = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+                        desc_m = re.search(r'<meta\s+name=["\']description["\']\s+content=["\'](.*?)["\']', html, re.IGNORECASE | re.DOTALL)
+                        h1_matches = re.findall(r"<h[12]>(.*?)</h[12]>", html, re.IGNORECASE)
+
+                        page_title = title_m.group(1).strip() if title_m else "Live Demo"
+                        meta_desc = desc_m.group(1).strip() if desc_m else ""
+                        headings = ", ".join(h[:60].strip() for h in h1_matches[:5]) if h1_matches else ""
+
+                        summary_text = (
+                            f"Live Demo Product Landing Specification:\n"
+                            f"URL: {clean_demo}\n"
+                            f"Page Title: {page_title}\n"
+                            f"Meta Description: {meta_desc}\n"
+                            f"Key Architectural Headings: {headings}\n"
+                        )
+                        clean_summary = clean_input_text(summary_text)
+
+                        src_id = f"src_demo_{uuid.uuid4().hex[:10]}"
+                        meta = {
+                            "demo_url": clean_demo,
+                            "page_title": page_title,
+                            "is_demo_landing": True,
+                        }
+                        with self.db.session() as conn:
+                            conn.execute(
+                                """
+                                INSERT INTO project_sources (
+                                    id, project_id, owner_id, source_type, name, original_filename,
+                                    file_size, mime_type, storage_path, content_text, metadata_json,
+                                    version, is_active, created_at, updated_at
+                                ) VALUES (?, ?, ?, 'demo_landing', 'Live Demo Product Specification', 'demo_landing.txt',
+                                          ?, 'text/plain', '', ?, ?, 1, 1, ?, ?)
+                                """,
+                                (src_id, project_id, owner_id, len(clean_summary), clean_summary, json.dumps(meta), now, now),
+                            )
+                        source_rec = self.get_project_source(src_id, owner_id)
+                        rag_engine.index_project_source(source_rec)
+                        ingested.append(source_rec)
+            except Exception as demo_err:
+                logger.warning("Live Demo landing page auto-ingestion skipped for project %s: %s", project_id, demo_err)
+
+        return ingested
+
     def _format_source_row(self, r: Any) -> Dict[str, Any]:
         return {
             "id": r["id"],

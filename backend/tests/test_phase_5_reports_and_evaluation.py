@@ -40,34 +40,114 @@ def app_client():
 
 @pytest.fixture(scope="module")
 def seeded_context():
-    """Provides verified seed user and post identifiers for Phase 5 testing."""
+    """Provides isolated test user and post fixtures for Phase 5 testing."""
+    author_id = "usr_sarah_chen"
+    other_id = "usr_dev_dan"
+    post_id = "post_reflect_01"
+    now = "2026-10-27T10:15:00Z"
+
+    with db_manager.session() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO auth_users (id, email, hashed_password, created_at) VALUES (?, ?, ?, ?)",
+            (author_id, "sarah.chen@example.com", "hash", now),
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO profiles (id, username, display_name, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)""",
+            (author_id, "sarahc", "Sarah Chen", now, now),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO auth_users (id, email, hashed_password, created_at) VALUES (?, ?, ?, ?)",
+            (other_id, "dan@example.com", "hash", now),
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO profiles (id, username, display_name, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)""",
+            (other_id, "devdan", "Daniel Thorne", now, now),
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO posts (
+                id, author_id, title, description, post_type, product_url,
+                category, tags, is_anonymous, upvotes_count, comments_count,
+                status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                post_id,
+                author_id,
+                "ReflectTask: Keyboard-first daily task planner. Looking for honest onboarding & sync feedback.",
+                "I built ReflectTask over the last four months. Keyboard shortcut onboarding and offline sync.",
+                "product_review",
+                "https://reflecttask.dev",
+                "Productivity",
+                json.dumps(["Productivity", "Keyboard-First"]),
+                0,
+                47,
+                2,
+                "published",
+                now,
+                now,
+            ),
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO comments (
+                id, post_id, author_id, content, is_anonymous, upvotes_count, is_helpful_flag, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "cmt_001",
+                post_id,
+                other_id,
+                "The onboarding process is confusing. When I first loaded the screen, I was confronted with a 12-item shortcut cheat sheet with no interactive walkthrough.",
+                1,
+                14,
+                1,
+                "published",
+                now,
+                now,
+            ),
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO comments (
+                id, post_id, author_id, content, is_anonymous, upvotes_count, is_helpful_flag, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "cmt_002",
+                post_id,
+                other_id,
+                "I need Google Calendar integration before I could ever switch.",
+                0,
+                11,
+                1,
+                "published",
+                now,
+                now,
+            ),
+        )
+
     return {
-        "postId": "post_reflect_01",
-        "authorId": "usr_sarah_chen",
-        "otherUserId": "usr_dev_dan",
+        "postId": post_id,
+        "authorId": author_id,
+        "otherUserId": other_id,
     }
 
 
 @pytest.fixture(scope="module")
-def author_token(app_client):
-    """JWT bearer token for the post author (Sarah Chen)."""
-    res = app_client.post(
-        "/api/v1/auth/login",
-        json={"email": "sarah.chen@example.com", "password": "demo-password-123"},
+def author_token(seeded_context):
+    """JWT bearer token for the post author."""
+    return create_access_token(
+        user_id=seeded_context["authorId"],
+        email="sarah.chen@example.com",
+        username="sarahc",
     )
-    assert res.status_code == 200, f"Login failed: {res.text}"
-    return res.json()["accessToken"]
 
 
 @pytest.fixture(scope="module")
-def other_user_token(app_client):
-    """JWT bearer token for a secondary user (Daniel Thorne) for isolation testing."""
-    res = app_client.post(
-        "/api/v1/auth/login",
-        json={"email": "dan@example.com", "password": "demo-password-123"},
+def other_user_token(seeded_context):
+    """JWT bearer token for secondary test user."""
+    return create_access_token(
+        user_id=seeded_context["otherUserId"],
+        email="dan@example.com",
+        username="devdan",
     )
-    assert res.status_code == 200, f"Login failed: {res.text}"
-    return res.json()["accessToken"]
 
 
 # =============================================================================

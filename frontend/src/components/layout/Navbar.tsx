@@ -11,6 +11,7 @@ import {
   Search,
   Layers,
   Shield,
+  MessageSquare,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -25,6 +26,7 @@ export const Navbar: React.FC = () => {
   const navLinks = [
     { to: '/', label: 'Feed', icon: <Layers className="w-4 h-4" /> },
     { to: '/explore', label: 'Explore', icon: <Compass className="w-4 h-4" /> },
+    { to: '/discussions', label: 'Discussions', icon: <MessageSquare className="w-4 h-4" /> },
     { to: '/saved', label: 'Saved', icon: <Bookmark className="w-4 h-4" /> },
     { to: '/activity', label: 'My Activity', icon: <Activity className="w-4 h-4" /> },
     ...(user?.isModerator
@@ -43,7 +45,7 @@ export const Navbar: React.FC = () => {
             </div>
             <div className="flex flex-col">
               <span className="font-bold text-base tracking-tight text-slate-900 dark:text-white leading-none">
-                ResearchIntel
+                FeedbackAI
               </span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide uppercase mt-0.5">
                 Anonymous Community & AI

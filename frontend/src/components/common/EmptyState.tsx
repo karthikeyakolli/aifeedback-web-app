@@ -23,17 +23,17 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center p-8 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30',
+        'flex flex-col items-center justify-center p-8 text-center rounded-2xl border border-dashed border-[var(--border-default)] bg-[var(--surface-raised)]/40',
         className
       )}
     >
-      <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 mb-3">
-        {icon || <MessageSquareDashed className="w-6 h-6" />}
+      <div className="w-11 h-11 rounded-full bg-[var(--surface)] border border-[var(--border-default)] flex items-center justify-center text-[var(--text-muted)] mb-3 shadow-2xs">
+        {icon || <MessageSquareDashed className="w-5 h-5 text-[var(--text-muted)]" />}
       </div>
-      <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-1">
+      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">
         {title}
       </h3>
-      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mb-4 leading-relaxed">
+      <p className="text-xs text-[var(--text-secondary)] max-w-sm mb-4 leading-relaxed">
         {description}
       </p>
       {actionText && onAction && (

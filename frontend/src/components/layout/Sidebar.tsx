@@ -12,18 +12,14 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  Terminal,
-  Layers,
-  Palette,
+  LogIn,
   Home,
-  FileCode2,
   User,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useSpace } from '../../context/SpaceContext';
-import { ThemeSwitcher } from '../common/ThemeSwitcher';
-import { SpaceSwitcher } from './SpaceSwitcher';
 import { Tooltip } from '../common/Tooltip';
+import { ThemeSwitcher } from '../common/ThemeSwitcher';
 import { cn } from '../../lib/utils';
 
 interface SidebarProps {
@@ -38,79 +34,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
   className = '',
 }) => {
   const location = useLocation();
-  const { user, isAuthenticated, logout, openAuthModal } = useAuth();
-  const { currentSpace } = useSpace();
+  const { user, isAuthenticated, logout } = useAuth();
 
-  // Space-specific Navigation Definitions (02_SPACES_AND_NAVIGATION.md)
-  const getSpaceNavItems = () => {
-    switch (currentSpace) {
-      case 'personal':
-        return [
-          { to: '/personal', label: 'My Projects', icon: FolderKanban, badge: 'Private' },
-          { to: '/personal/projects/new', label: 'New Project', icon: Plus },
-          { to: '/activity', label: 'Feedback Activity', icon: Activity },
-          { to: '/saved', label: 'Saved Items', icon: Bookmark },
-        ];
-      case 'creator':
-        return [
-          { to: '/creator', label: 'Creator Studio', icon: Palette, badge: 'Studio' },
-          { to: '/creator/profile', label: 'Maker Profile', icon: User },
-          { to: '/creator/lab', label: 'AI Review Lab', icon: Terminal, badge: 'Lab' },
-        ];
-      case 'public':
-      default:
-        return [
-          { to: '/', label: 'Overview', icon: Home },
-          { to: '/explore', label: 'Explore Projects', icon: Compass },
-          { to: '/discussions', label: 'Community Feed', icon: Layers },
-          { to: '/saved', label: 'Saved Bookmarks', icon: Bookmark },
-        ];
-    }
-  };
+  // Navigation Items: Guests only see public exploration; Authenticated users see full SaaS workspace
+  const mainNavItems = isAuthenticated
+    ? [
+        { to: '/', label: 'Home', icon: Home },
+        { to: '/explore', label: 'Explore', icon: Compass },
+        { to: '/discussions', label: 'Discussions', icon: MessageSquare },
+        { to: '/workspace', label: 'AI Workspace', icon: Sparkles },
+        { to: '/publish', label: 'Publish Project', icon: Plus },
+        { to: '/activity', label: 'Activity', icon: Activity },
+        { to: '/saved', label: 'Saved Projects', icon: Bookmark },
+        { to: '/my-projects', label: 'My Projects', icon: FolderKanban },
+        { to: '/profile', label: 'Profile', icon: User },
+      ]
+    : [
+        { to: '/', label: 'Home', icon: Home },
+        { to: '/explore', label: 'Explore Feed', icon: Compass },
+        { to: '/discussions', label: 'Discussions', icon: MessageSquare },
+      ];
 
-  const navItems = getSpaceNavItems();
-
-  const globalItems = [
+  const adminNavItems = [
     ...(user?.isModerator
       ? [{ to: '/moderation', label: 'Moderation', icon: Shield, badge: 'Staff' }]
       : []),
-    ...(import.meta.env.DEV
-      ? [{ to: '/developer', label: 'Developer', icon: FileCode2, badge: 'Dev' }]
+    ...(isAuthenticated
+      ? [{ to: '/settings', label: 'Settings', icon: Settings }]
       : []),
-    { to: '/settings', label: 'Settings', icon: Settings },
   ];
-
-  const getPrimaryAction = () => {
-    if (currentSpace === 'personal') {
-      return {
-        to: '/personal/projects/new',
-        label: 'New Project',
-        icon: Plus,
-      };
-    }
-    if (currentSpace === 'creator') {
-      return {
-        to: '/creator',
-        label: 'New Showcase',
-        icon: Sparkles,
-      };
-    }
-    return {
-      to: '/create',
-      label: 'New Post',
-      icon: Plus,
-    };
-  };
-
-  const primaryAction = getPrimaryAction();
-  const ActionIcon = primaryAction.icon;
 
   return (
     <aside
       aria-label="Main Navigation Sidebar"
       className={cn(
         'hidden md:flex flex-col border-r border-[var(--border-default)] bg-[var(--surface)] text-[var(--text-primary)] transition-all duration-200 select-none shrink-0 z-20',
-        isCollapsed ? 'w-[72px]' : 'w-[250px]',
+        isCollapsed ? 'w-[72px]' : 'w-[240px]',
         className
       )}
     >
@@ -122,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             'flex items-center gap-2.5 overflow-hidden transition-opacity',
             isCollapsed && 'justify-center w-full'
           )}
-          title="AI Project Feedback"
+          title="FeedbackAI"
         >
           <div className="w-9 h-9 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white shadow-xs shrink-0">
             <Sparkles className="w-5 h-5" />
@@ -133,218 +92,190 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 FeedbackAI
               </span>
               <span className="text-[10px] text-[var(--text-muted)] font-medium tracking-wide uppercase mt-1 truncate">
-                Grounded Reviews
+                Product Intelligence
               </span>
             </div>
           )}
         </Link>
       </div>
 
-      {/* 3-Space Switcher (Public / Personal / Creator) */}
-      <div className="px-3 pt-3">
-        <SpaceSwitcher isCollapsed={isCollapsed} />
-      </div>
-
-      {/* Dominant Space Action Button */}
+      {/* Primary Action Button */}
       <div className="p-3">
         {isAuthenticated ? (
-          <Tooltip content={primaryAction.label} side="right" disabled={!isCollapsed}>
+          <Tooltip content="Publish Project" side="right" disabled={!isCollapsed}>
             <Link
-              to={primaryAction.to}
+              to="/publish"
               className={cn(
                 'flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-xl bg-[var(--accent)] hover:opacity-90 text-[var(--accent-foreground)] font-semibold text-xs shadow-xs transition-all cursor-pointer active:translate-y-[1px]',
                 isCollapsed && 'p-2.5'
               )}
             >
-              <ActionIcon className="w-4 h-4 shrink-0" />
-              {!isCollapsed && <span>{primaryAction.label}</span>}
+              <Plus className="w-4 h-4 shrink-0" />
+              {!isCollapsed && <span>Publish Project</span>}
             </Link>
           </Tooltip>
         ) : (
-          <Tooltip content="Sign in to create" side="right" disabled={!isCollapsed}>
-            <button
-              type="button"
-              onClick={() => openAuthModal('signup')}
+          <Tooltip content="Create account to build" side="right" disabled={!isCollapsed}>
+            <Link
+              to="/signup"
               className={cn(
                 'flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-xl bg-[var(--accent)] hover:opacity-90 text-[var(--accent-foreground)] font-semibold text-xs shadow-xs transition-all cursor-pointer active:translate-y-[1px]',
                 isCollapsed && 'p-2.5'
               )}
             >
-              <ActionIcon className="w-4 h-4 shrink-0" />
-              {!isCollapsed && <span>{primaryAction.label}</span>}
-            </button>
+              <LogIn className="w-4 h-4 shrink-0" />
+              {!isCollapsed && <span>Get Started</span>}
+            </Link>
           </Tooltip>
         )}
       </div>
 
-      {/* Space-Specific Navigation Items */}
-      <div className="flex-1 px-2.5 py-1 space-y-1 overflow-y-auto">
-        {!isCollapsed && (
-          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-            {currentSpace} Navigation
-          </div>
-        )}
+      {/* Main Navigation Items */}
+      <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
+        {mainNavItems.map((item) => {
+          const Icon = item.icon;
+          const isActive =
+            item.to === '/'
+              ? location.pathname === '/'
+              : location.pathname.startsWith(item.to);
 
-        <nav className="space-y-1">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.to;
-            const ItemIcon = item.icon;
-
-            const linkContent = (
+          return (
+            <Tooltip key={item.to} content={item.label} side="right" disabled={!isCollapsed}>
               <Link
-                key={item.to}
                 to={item.to}
                 className={cn(
-                  'flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all group cursor-pointer',
                   isActive
-                    ? 'bg-[var(--accent)]/10 text-[var(--accent)] font-semibold shadow-2xs'
+                    ? 'bg-[var(--surface-raised)] text-[var(--text-primary)] font-semibold border border-[var(--border-default)]'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]',
                   isCollapsed && 'justify-center px-0'
                 )}
               >
-                <ItemIcon className="w-4 h-4 shrink-0" />
+                <Icon
+                  className={cn(
+                    'w-4 h-4 shrink-0 transition-colors',
+                    isActive ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] group-hover:text-[var(--text-primary)]'
+                  )}
+                />
                 {!isCollapsed && <span className="truncate">{item.label}</span>}
-                {!isCollapsed && item.badge && (
-                  <span className="ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded bg-[var(--surface-raised)] border border-[var(--border-default)] text-[var(--text-muted)]">
-                    {item.badge}
-                  </span>
-                )}
               </Link>
-            );
+            </Tooltip>
+          );
+        })}
 
-            if (isCollapsed) {
-              return (
-                <Tooltip key={item.to} content={item.label} side="right">
-                  {linkContent}
-                </Tooltip>
-              );
-            }
-
-            return linkContent;
-          })}
-        </nav>
-
-        {/* Global / Secondary Navigation Section */}
-        <div className="pt-3 border-t border-[var(--border-default)] mt-3">
+        <div className="pt-4 mt-4 border-t border-[var(--border-default)]/60">
           {!isCollapsed && (
-            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              General
-            </div>
+            <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              Preferences
+            </p>
           )}
-          <nav className="space-y-1">
-            {globalItems.map((item) => {
-              const isActive = location.pathname === item.to;
-              const ItemIcon = item.icon;
-
-              const linkContent = (
+          {adminNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname.startsWith(item.to);
+            return (
+              <Tooltip key={item.to} content={item.label} side="right" disabled={!isCollapsed}>
                 <Link
-                  key={item.to}
                   to={item.to}
                   className={cn(
-                    'flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all',
+                    'flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group cursor-pointer',
                     isActive
-                      ? 'bg-[var(--accent)]/10 text-[var(--accent)] font-semibold shadow-2xs'
+                      ? 'bg-[var(--surface-raised)] text-[var(--text-primary)] font-semibold'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]',
                     isCollapsed && 'justify-center px-0'
                   )}
                 >
-                  <ItemIcon className="w-4 h-4 shrink-0" />
-                  {!isCollapsed && <span className="truncate">{item.label}</span>}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Icon className="w-4 h-4 shrink-0 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
+                    {!isCollapsed && <span className="truncate">{item.label}</span>}
+                  </div>
                   {!isCollapsed && item.badge && (
-                    <span className="ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold uppercase bg-[var(--surface-raised)] text-[var(--text-muted)] border border-[var(--border-default)]">
                       {item.badge}
                     </span>
                   )}
                 </Link>
-              );
-
-              if (isCollapsed) {
-                return (
-                  <Tooltip key={item.to} content={item.label} side="right">
-                    {linkContent}
-                  </Tooltip>
-                );
-              }
-
-              return linkContent;
-            })}
-          </nav>
+              </Tooltip>
+            );
+          })}
         </div>
-      </div>
+      </nav>
 
-      {/* Footer Area / Theme & Account Controls */}
-      <div className="p-3 border-t border-[var(--border-default)] space-y-2 bg-[var(--surface)]">
-        {/* Appearance Theme Selector */}
-        {!isCollapsed ? (
-          <div className="flex items-center justify-between text-xs text-[var(--text-muted)] px-1">
-            <span className="text-[11px] font-medium">Theme</span>
-            <ThemeSwitcher variant="dropdown" />
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <ThemeSwitcher variant="dropdown" />
+      {/* Footer / Account / Collapse Toggle */}
+      <div className="p-3 border-t border-[var(--border-default)] flex flex-col gap-2">
+        {/* User Card when expanded */}
+        {!isCollapsed && isAuthenticated && user && (
+          <div className="flex items-center justify-between p-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border-default)]">
+            <Link to="/profile" className="flex items-center gap-2.5 min-w-0">
+              {user.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.displayName}
+                  className="w-7 h-7 rounded-full object-cover shrink-0"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center font-bold text-xs shrink-0">
+                  {user.displayName?.charAt(0) || 'U'}
+                </div>
+              )}
+              <div className="truncate text-left">
+                <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{user.displayName}</p>
+                <p className="text-[10px] text-[var(--text-muted)] font-mono truncate">@{user.username}</p>
+              </div>
+            </Link>
+            <button
+              type="button"
+              onClick={() => logout()}
+              title="Sign Out"
+              aria-label="Sign out"
+              className="p-1.5 text-[var(--text-muted)] hover:text-red-500 rounded-lg hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
-        {/* Authenticated User Quick Info or Sign In */}
-        {isAuthenticated && user ? (
-          <div
-            className={cn(
-              'flex items-center gap-2.5 p-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border-default)]',
-              isCollapsed && 'justify-center p-1.5'
-            )}
-          >
-            {user.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt={user.displayName}
-                className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-[var(--border-default)]"
-              />
-            ) : (
-              <div className="w-7 h-7 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center font-bold text-xs shrink-0">
-                {user.displayName?.charAt(0) || 'U'}
-              </div>
-            )}
-            {!isCollapsed && (
-              <div className="flex-1 truncate text-xs">
-                <div className="font-semibold truncate text-[var(--text-primary)]">{user.displayName}</div>
-                <div className="text-[10px] text-[var(--text-muted)] truncate font-mono">@{user.username}</div>
-              </div>
-            )}
-            {!isCollapsed && (
-              <button
-                type="button"
-                onClick={() => logout()}
-                title="Sign Out"
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        ) : (
-          !isCollapsed && (
+        {/* Unauthenticated Visitor Sign In Options */}
+        {!isCollapsed && !isAuthenticated && (
+          <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border-default)]">
             <Link
               to="/login"
-              className="flex items-center justify-center w-full py-1.5 px-3 rounded-xl border border-[var(--border-default)] hover:bg-[var(--surface-hover)] text-xs font-semibold text-[var(--text-primary)] transition-colors"
+              className="w-full py-1.5 text-center text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] rounded-lg transition-colors cursor-pointer"
             >
               Sign In
             </Link>
-          )
+            <Link
+              to="/signup"
+              className="w-full py-1.5 text-center text-xs font-semibold text-[var(--accent-foreground)] bg-[var(--accent)] hover:opacity-90 rounded-lg shadow-2xs transition-all cursor-pointer"
+            >
+              Sign Up
+            </Link>
+          </div>
         )}
 
-        {/* Sidebar Collapse Toggle Button */}
-        <Tooltip content={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} side="right">
+        {/* Bottom controls: Theme Switcher & Collapse Button */}
+        <div className={cn('flex items-center gap-1.5', isCollapsed ? 'flex-col justify-center' : 'justify-between')}>
+          <ThemeSwitcher />
+
+          {isCollapsed && !isAuthenticated && (
+            <Tooltip content="Sign In" side="right">
+              <Link
+                to="/login"
+                className="p-2 rounded-xl border border-[var(--border-default)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors flex items-center justify-center cursor-pointer"
+              >
+                <LogIn className="w-4 h-4" />
+              </Link>
+            </Tooltip>
+          )}
+
           <button
             type="button"
             onClick={onToggleCollapse}
             aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer text-xs"
+            className="p-2 rounded-xl border border-[var(--border-default)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
           >
             {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            {!isCollapsed && <span className="text-[11px] font-medium">Collapse</span>}
           </button>
-        </Tooltip>
+        </div>
       </div>
     </aside>
   );

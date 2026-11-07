@@ -3,35 +3,35 @@
 @layer base {
   :root {
     color-scheme: light;
-    /* Semantic Design Tokens (Spec 10_VISUAL_DESIGN_SYSTEM.md) */
-    --canvas: #f7f8fc;
+    /* Minimalist Light SaaS Design System */
+    --canvas: #f8fafc;
     --surface: #ffffff;
-    --surface-raised: #ffffff;
-    --surface-hover: #f1f3f9;
-    --border-default: #e6e8ef;
-    --border-strong: #cbd2e0;
-    --text-primary: #172033;
-    --text-secondary: #475467;
-    --text-muted: #667085;
-    --accent: #4f46e5;
-    --accent-hover: #4338ca;
-    --accent-subtle: rgba(79, 70, 229, 0.08);
+    --surface-raised: #f1f5f9;
+    --surface-hover: #f8fafc;
+    --border-default: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-subtle: rgba(37, 99, 235, 0.08);
     --accent-foreground: #ffffff;
-    --focus-ring: #4f46e5;
-    --status-success: #059669;
-    --status-warning: #d97706;
-    --status-danger: #e11d48;
-    --status-info: #2563eb;
-    --overlay: rgba(15, 23, 42, 0.45);
+    --focus-ring: #2563eb;
+    --status-success: #10b981;
+    --status-warning: #f59e0b;
+    --status-danger: #ef4444;
+    --status-info: #0284c7;
+    --overlay: rgba(15, 23, 42, 0.35);
 
     /* Radii */
-    --radius-sm: 8px;
-    --radius-md: 10px;
-    --radius-lg: 14px;
-    --radius-xl: 18px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
     --radius-full: 9999px;
 
-    /* Motion Tokens (Spec 09_MOTION_HOVER_AND_INTERACTION.md) */
+    /* Motion Tokens */
     --motion-instant: 80ms;
     --motion-fast: 140ms;
     --motion-standard: 200ms;
@@ -50,16 +50,16 @@
     --primary-hover: var(--accent-hover);
     --primary-subtle: var(--accent-subtle);
     --primary-foreground: var(--accent-foreground);
-    --evidence-community: #0f766e;
+    --evidence-community: #0d9488;
     --evidence-document: #2563eb;
-    --ai-synthesis: #7c3aed;
-    --card-shadow: 0 1px 3px rgba(23, 32, 51, 0.05), 0 1px 2px rgba(23, 32, 51, 0.03);
-    --card-shadow-hover: 0 4px 14px rgba(23, 32, 51, 0.08);
+    --ai-synthesis: #6366f1;
+    --card-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
+    --card-shadow-hover: 0 4px 12px 0 rgba(15, 23, 42, 0.08);
 
-    /* Neomorphic / Soft-tactile surface tokens */
-    --neomorph-shadow: 3px 3px 10px rgba(23, 32, 51, 0.05), -3px -3px 10px rgba(255, 255, 255, 0.95);
-    --neomorph-shadow-hover: 5px 5px 15px rgba(23, 32, 51, 0.08), -5px -5px 15px rgba(255, 255, 255, 1);
-    --neomorph-inset: inset 2px 2px 4px rgba(23, 32, 51, 0.06), inset -2px -2px 4px rgba(255, 255, 255, 0.9);
+    /* Clean subtle surfaces */
+    --neomorph-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04);
+    --neomorph-shadow-hover: 0 4px 12px 0 rgba(15, 23, 42, 0.08);
+    --neomorph-inset: inset 0 1px 2px 0 rgba(15, 23, 42, 0.05);
 
     --bg-primary: var(--bg-surface);
     --bg-tertiary: var(--bg-secondary);
@@ -68,28 +68,27 @@
 
   .dark {
     color-scheme: dark;
-    /* Semantic Design Tokens (Spec 10_VISUAL_DESIGN_SYSTEM.md) */
+    /* Sleek Professional Dark SaaS Design System */
     --canvas: #090d16;
-    --surface: #111726;
-    --surface-raised: #182033;
-    --surface-hover: #1f2a42;
-    --border-default: #242f47;
-    --border-strong: #334161;
+    --surface: #0f172a;
+    --surface-raised: #1e293b;
+    --surface-hover: #243248;
+    --border-default: #1e293b;
+    --border-strong: #334155;
     --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --accent: #6366f1;
-    --accent-hover: #818cf8;
-    --accent-subtle: rgba(99, 102, 241, 0.15);
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-subtle: rgba(59, 130, 246, 0.15);
     --accent-foreground: #ffffff;
-    --focus-ring: #818cf8;
-    --status-success: #10b981;
-    --status-warning: #f59e0b;
-    --status-danger: #f43f5e;
+    --focus-ring: #3b82f6;
+    --status-success: #34d399;
+    --status-warning: #fbbf24;
+    --status-danger: #f87171;
     --status-info: #38bdf8;
-    --overlay: rgba(0, 0, 0, 0.7);
+    --overlay: rgba(0, 0, 0, 0.65);
 
-    /* Legacy mapping for backward-compatibility */
     --bg-app: var(--canvas);
     --bg-surface: var(--surface);
     --bg-secondary: var(--surface-hover);
@@ -99,16 +98,15 @@
     --primary-hover: var(--accent-hover);
     --primary-subtle: var(--accent-subtle);
     --primary-foreground: var(--accent-foreground);
-    --evidence-community: #2dd4bf;
-    --evidence-document: #60a5fa;
-    --ai-synthesis: #a78bfa;
-    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
-    --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.45);
+    --evidence-community: #14b8a6;
+    --evidence-document: #38bdf8;
+    --ai-synthesis: #818cf8;
+    --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
+    --card-shadow-hover: 0 4px 16px 0 rgba(0, 0, 0, 0.45);
 
-    /* Neomorphic / Soft-tactile surface tokens */
-    --neomorph-shadow: 3px 3px 12px rgba(0, 0, 0, 0.4), -2px -2px 8px rgba(35, 48, 74, 0.3);
-    --neomorph-shadow-hover: 5px 5px 18px rgba(0, 0, 0, 0.55), -3px -3px 12px rgba(35, 48, 74, 0.4);
-    --neomorph-inset: inset 2px 2px 4px rgba(0, 0, 0, 0.5), inset -2px -2px 4px rgba(35, 48, 74, 0.25);
+    --neomorph-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+    --neomorph-shadow-hover: 0 4px 16px 0 rgba(0, 0, 0, 0.45);
+    --neomorph-inset: inset 0 1px 2px 0 rgba(0, 0, 0, 0.4);
 
     --bg-primary: var(--bg-surface);
     --bg-tertiary: var(--bg-secondary);

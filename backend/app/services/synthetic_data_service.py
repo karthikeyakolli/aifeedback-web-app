@@ -203,19 +203,19 @@ class SyntheticDataManager:
         """Idempotently inserts or updates the synthetic test dataset."""
         now = utc_now()
         with db_manager.session() as conn:
-            # 1. Ensure author exists
-            user_exists = conn.execute(
-                "SELECT id FROM auth_users WHERE id = ?", (SYNTH_OWNER_ID,)
-            ).fetchone()
-            if not user_exists:
+            # 1. Ensure synthetic author and commenter exist
+            for uid, email, uname, dname in [
+                (SYNTH_OWNER_ID, "sarah.chen@example.com", "sarahc", "Sarah Chen"),
+                ("usr_dev_dan", "dan@example.com", "devdan", "Daniel Thorne"),
+            ]:
                 conn.execute(
-                    "INSERT INTO auth_users (id, email, hashed_password, created_at) VALUES (?, ?, ?, ?)",
-                    (SYNTH_OWNER_ID, "sarah.chen@example.com", "dummy_hash", now),
+                    "INSERT OR REPLACE INTO auth_users (id, email, hashed_password, created_at) VALUES (?, ?, ?, ?)",
+                    (uid, email, "dummy_hash", now),
                 )
                 conn.execute(
-                    """INSERT INTO profiles (id, username, display_name, bio, created_at, updated_at)
+                    """INSERT OR REPLACE INTO profiles (id, username, display_name, bio, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)""",
-                    (SYNTH_OWNER_ID, "sarahc", "Sarah Chen", "Synthetic Fixture Owner", now, now),
+                    (uid, uname, dname, "Synthetic Fixture User", now, now),
                 )
 
             # 2. Upsert synthetic post

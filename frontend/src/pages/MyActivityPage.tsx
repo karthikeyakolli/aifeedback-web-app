@@ -86,7 +86,7 @@ export const MyActivityPage: React.FC = () => {
               className="w-16 h-16 rounded-2xl object-cover ring-2 ring-indigo-500/20 shadow-xs shrink-0"
             />
           ) : (
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-2xl shadow-xs shrink-0">
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 text-[var(--accent)] border border-blue-200/70 flex items-center justify-center font-black text-2xl shadow-xs shrink-0">
               {user.displayName?.charAt(0) || 'U'}
             </div>
           )}

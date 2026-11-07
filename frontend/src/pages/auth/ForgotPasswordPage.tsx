@@ -42,11 +42,11 @@ export const ForgotPasswordPage: React.FC = () => {
         {/* Brand Header */}
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white shadow-xs">
               <Sparkles className="w-4 h-4" />
             </div>
-            <span className="font-extrabold text-sm tracking-tight text-slate-900 dark:text-white">
-              ResearchIntel
+            <span className="font-extrabold text-sm tracking-tight text-[var(--text-primary)]">
+              FeedbackAI
             </span>
           </Link>
 

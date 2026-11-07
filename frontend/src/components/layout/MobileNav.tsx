@@ -9,8 +9,12 @@ import {
   FolderKanban,
   Palette,
   Menu,
+  Sparkles,
+  LogIn,
+  User,
 } from 'lucide-react';
 import { useSpace } from '../../context/SpaceContext';
+import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
 
 interface MobileNavProps {
@@ -20,8 +24,18 @@ interface MobileNavProps {
 export const MobileNav: React.FC<MobileNavProps> = ({ onOpenMenu }) => {
   const location = useLocation();
   const { currentSpace } = useSpace();
+  const { isAuthenticated } = useAuth();
 
   const getLinks = () => {
+    // Unauthenticated visitors are restricted exclusively to exploring
+    if (!isAuthenticated) {
+      return [
+        { to: '/', label: 'Home', icon: Home },
+        { to: '/explore', label: 'Explore', icon: Compass },
+        { to: '/login', label: 'Sign In', icon: LogIn },
+        { to: '/signup', label: 'Sign Up', icon: User, highlight: true },
+      ];
+    }
     switch (currentSpace) {
       case 'personal':
         return [
@@ -34,15 +48,16 @@ export const MobileNav: React.FC<MobileNavProps> = ({ onOpenMenu }) => {
         return [
           { to: '/creator', label: 'Studio', icon: Palette },
           { to: '/creator/profile', label: 'Profile', icon: Activity },
-          { to: '/developer', label: 'Lab', icon: Plus, highlight: true },
+          { to: '/publish', label: 'New', icon: Plus, highlight: true },
           { to: '/saved', label: 'Saved', icon: Bookmark },
         ];
       case 'public':
       default:
         return [
-          { to: '/', label: 'Overview', icon: Home },
+          { to: '/', label: 'Home', icon: Home },
           { to: '/explore', label: 'Explore', icon: Compass },
-          { to: '/create', label: 'Post', icon: Plus, highlight: true },
+          { to: '/workspace', label: 'AI Studio', icon: Sparkles },
+          { to: '/publish', label: 'Publish', icon: Plus, highlight: true },
           { to: '/saved', label: 'Saved', icon: Bookmark },
         ];
     }

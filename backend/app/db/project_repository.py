@@ -56,6 +56,36 @@ class ProjectRepository:
                     repository_url, demo_url, 1 if is_public else 0, now, now
                 ),
             )
+            # Guarantee companion post in posts table for public group discussions
+            try:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO posts (
+                        id, author_id, title, description, post_type, category,
+                        product_url, status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, 'product_review', ?, ?, 'published', ?, ?)
+                    """,
+                    (
+                        project_id, user_id, name, description or tagline, category,
+                        demo_url or repository_url or "", now, now
+                    ),
+                )
+            except Exception as sync_err:
+                logger.warning("Companion discussion post sync skipped: %s", sync_err)
+
+        # Trigger auto-ingestion of GitHub README & Live Demo landing architecture into project knowledge chunks
+        if repository_url or demo_url:
+            try:
+                from backend.app.services.source_ingestion_service import source_ingestion_service
+                source_ingestion_service.ingest_project_web_links(
+                    project_id=project_id,
+                    owner_id=user_id,
+                    repo_url=repository_url,
+                    demo_url=demo_url,
+                )
+            except Exception as auto_ingest_err:
+                logger.warning("Project web links auto-ingestion error: %s", auto_ingest_err)
+
         return self.get_project(project_id, user_id)
 
     def get_project(self, project_id: str, requesting_user_id: Optional[str] = None) -> Dict[str, Any]:
@@ -103,20 +133,34 @@ class ProjectRepository:
         self,
         category_filter: Optional[str] = None,
         search_query: Optional[str] = None,
+        sort: str = "trending",
         limit: int = 50,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
         with self.db.session() as conn:
-            query = "SELECT * FROM projects WHERE is_public = 1"
+            query = """
+                SELECT p.*, pr.username as creator_username, pr.display_name as creator_display_name, pr.avatar_url as creator_avatar_url
+                FROM projects p
+                LEFT JOIN profiles pr ON p.user_id = pr.id
+                WHERE p.is_public = 1
+            """
             params: List[Any] = []
             if category_filter and category_filter.lower() != "all":
-                query += " AND (LOWER(category) = LOWER(?) OR LOWER(category) = LOWER(REPLACE(?, ' ', '-')))"
+                query += " AND (LOWER(p.category) = LOWER(?) OR LOWER(p.category) = LOWER(REPLACE(?, ' ', '-')))"
                 params.extend([category_filter, category_filter])
             if search_query:
-                query += " AND (name LIKE ? OR tagline LIKE ? OR description LIKE ?)"
+                query += " AND (p.name LIKE ? OR p.tagline LIKE ? OR p.description LIKE ?)"
                 wildcard = f"%{search_query.strip()}%"
                 params.extend([wildcard, wildcard, wildcard])
-            query += " ORDER BY upvotes_count DESC, created_at DESC LIMIT ? OFFSET ?"
+
+            if sort == "new":
+                query += " ORDER BY p.created_at DESC"
+            elif sort == "most_discussed":
+                query += " ORDER BY p.reviews_count DESC, p.upvotes_count DESC, p.created_at DESC"
+            else:  # trending
+                query += " ORDER BY (p.upvotes_count * 2 + p.reviews_count * 3) DESC, p.created_at DESC"
+
+            query += " LIMIT ? OFFSET ?"
             params.extend([limit, offset])
 
             rows = conn.execute(query, params).fetchall()
@@ -235,7 +279,21 @@ class ProjectRepository:
                 f"UPDATE projects SET {', '.join(fields)} WHERE id = ?",
                 params,
             )
-        return self.get_project(project_id, user_id)
+
+        updated_proj = self.get_project(project_id, user_id)
+        if updates.get("repository_url") or updates.get("repositoryUrl") or updates.get("demo_url") or updates.get("demoUrl"):
+            try:
+                from backend.app.services.source_ingestion_service import source_ingestion_service
+                source_ingestion_service.ingest_project_web_links(
+                    project_id=project_id,
+                    owner_id=user_id,
+                    repo_url=updated_proj.get("repositoryUrl"),
+                    demo_url=updated_proj.get("demoUrl"),
+                )
+            except Exception as auto_err:
+                logger.warning("Project web links re-ingestion skipped: %s", auto_err)
+
+        return updated_proj
 
     def delete_project(self, project_id: str, user_id: str) -> bool:
         with self.db.session() as conn:
@@ -1032,6 +1090,7 @@ class ProjectRepository:
 
     def _serialize_public_project(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Server-side public data projection: strictly excludes internal user_id."""
+        keys = row.keys() if hasattr(row, 'keys') else []
         return {
             "id": row["id"],
             "name": row["name"],
@@ -1044,8 +1103,9 @@ class ProjectRepository:
             "isPublic": True,
             "upvotesCount": row["upvotes_count"],
             "reviewsCount": row["reviews_count"],
-            "creatorUsername": None,
-            "creatorDisplayName": None,
+            "creatorUsername": row["creator_username"] if "creator_username" in keys else None,
+            "creatorDisplayName": row["creator_display_name"] if "creator_display_name" in keys else None,
+            "creatorAvatarUrl": row["creator_avatar_url"] if "creator_avatar_url" in keys else None,
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }
@@ -1149,6 +1209,175 @@ class ProjectRepository:
             "findings": findings,
             "createdAt": row["created_at"],
         }
+
+    # -------------------------------------------------------------------------
+    # APK Releases & Quarantine Management (Section 10)
+    # -------------------------------------------------------------------------
+    def create_apk_release(
+        self,
+        project_id: str,
+        user_id: str,
+        version_name: str,
+        version_code: int,
+        release_notes: str,
+        file_name: str,
+        file_size_bytes: int,
+        file_sha256: str,
+        package_name: str = "",
+        min_sdk_version: int = 21,
+        target_sdk_version: int = 34,
+    ) -> Dict[str, Any]:
+        """Creates an APK release record in private quarantine pending verification."""
+        # Verify ownership
+        _ = self.get_project(project_id, requesting_user_id=user_id)
+        release_id = f"apk_{uuid.uuid4().hex[:12]}"
+        now = utc_now_iso()
+
+        with self.db.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO project_apk_releases (
+                    id, project_id, user_id, version_name, version_code,
+                    release_notes, file_name, file_size_bytes, file_sha256,
+                    package_name, min_sdk_version, target_sdk_version,
+                    status, quarantine_reason, download_count,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'quarantined', 'Pending automated verification scan', 0, ?, ?)
+                """,
+                (
+                    release_id, project_id, user_id, version_name, version_code,
+                    release_notes, file_name, file_size_bytes, file_sha256,
+                    package_name, min_sdk_version, target_sdk_version, now, now
+                ),
+            )
+        return self.get_apk_release(release_id, project_id)
+
+    def list_apk_releases(self, project_id: str, is_owner: bool = False) -> List[Dict[str, Any]]:
+        """Lists APK releases. Public visitors see only published releases; owners see all."""
+        with self.db.session() as conn:
+            if is_owner:
+                rows = conn.execute(
+                    "SELECT * FROM project_apk_releases WHERE project_id = ? ORDER BY version_code DESC, created_at DESC",
+                    (project_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM project_apk_releases WHERE project_id = ? AND status = 'published' ORDER BY version_code DESC, created_at DESC",
+                    (project_id,),
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_apk_release(self, release_id: str, project_id: Optional[str] = None) -> Dict[str, Any]:
+        with self.db.session() as conn:
+            query = "SELECT * FROM project_apk_releases WHERE id = ?"
+            params = [release_id]
+            if project_id:
+                query += " AND project_id = ?"
+                params.append(project_id)
+            row = conn.execute(query, params).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="APK release not found")
+            return dict(row)
+
+    def update_apk_release_status(
+        self,
+        release_id: str,
+        project_id: str,
+        user_id: str,
+        new_status: str,
+    ) -> Dict[str, Any]:
+        """Owner transitions release from quarantined -> published or revoked."""
+        _ = self.get_project(project_id, requesting_user_id=user_id)
+        if new_status not in ("quarantined", "verified", "published", "revoked"):
+            raise HTTPException(status_code=400, detail="Invalid release status")
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            conn.execute(
+                "UPDATE project_apk_releases SET status = ?, updated_at = ? WHERE id = ? AND project_id = ?",
+                (new_status, now, release_id, project_id),
+            )
+        return self.get_apk_release(release_id, project_id)
+
+    def increment_apk_download(self, release_id: str) -> None:
+        with self.db.session() as conn:
+            conn.execute(
+                "UPDATE project_apk_releases SET download_count = download_count + 1 WHERE id = ?",
+                (release_id,),
+            )
+
+    # -------------------------------------------------------------------------
+    # Project Changelog & Verified Feedback Fixes
+    # -------------------------------------------------------------------------
+    def list_project_changelog(self, project_id: str, is_public_only: bool = True) -> List[Dict[str, Any]]:
+        """Lists changelog entries and verified improvements published by the creator."""
+        with self.db.session() as conn:
+            where_clause = "WHERE c.project_id = ? AND c.is_public = 1" if is_public_only else "WHERE c.project_id = ?"
+            sql = f"""
+                SELECT c.*, f.title as finding_title, f.severity as finding_severity
+                FROM project_changelog_entries c
+                LEFT JOIN feedback_findings f ON c.finding_id = f.id
+                {where_clause}
+                ORDER BY c.created_at DESC
+            """
+            rows = conn.execute(sql, (project_id,)).fetchall()
+            changelog_list = []
+            for r in rows:
+                r_dict = dict(r)
+                changelog_list.append({
+                    "id": r_dict["id"],
+                    "projectId": r_dict["project_id"],
+                    "userId": r_dict["user_id"],
+                    "versionTag": r_dict["version_tag"],
+                    "title": r_dict["title"],
+                    "description": r_dict["description"],
+                    "findingId": r_dict["finding_id"],
+                    "findingTitle": r_dict.get("finding_title"),
+                    "findingSeverity": r_dict.get("finding_severity"),
+                    "isPublic": bool(r_dict["is_public"]),
+                    "createdAt": r_dict["created_at"],
+                    "updatedAt": r_dict["updated_at"],
+                })
+            return changelog_list
+
+    def create_project_changelog_entry(
+        self,
+        project_id: str,
+        user_id: str,
+        version_tag: str,
+        title: str,
+        description: str,
+        finding_id: Optional[str] = None,
+        is_public: bool = True,
+    ) -> Dict[str, Any]:
+        """Creates a changelog entry for a project, verifying creator ownership."""
+        _ = self.get_project(project_id, requesting_user_id=user_id)
+        entry_id = f"cl_{uuid.uuid4().hex[:12]}"
+        now = utc_now_iso()
+        with self.db.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO project_changelog_entries (
+                    id, project_id, user_id, version_tag, title, description,
+                    finding_id, is_public, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    entry_id, project_id, user_id, version_tag.strip(), title.strip(),
+                    description.strip(), finding_id, 1 if is_public else 0, now, now
+                ),
+            )
+        entries = self.list_project_changelog(project_id, is_public_only=False)
+        return next((e for e in entries if e["id"] == entry_id), {})
+
+    def delete_project_changelog_entry(self, project_id: str, entry_id: str, user_id: str) -> bool:
+        """Deletes a changelog entry, verifying creator ownership."""
+        _ = self.get_project(project_id, requesting_user_id=user_id)
+        with self.db.session() as conn:
+            res = conn.execute(
+                "DELETE FROM project_changelog_entries WHERE id = ? AND project_id = ? AND user_id = ?",
+                (entry_id, project_id, user_id),
+            )
+            return res.rowcount > 0
 
 
 project_repo = ProjectRepository()

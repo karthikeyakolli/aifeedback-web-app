@@ -41,7 +41,7 @@ export const DropdownItem = React.forwardRef<
       'relative flex cursor-pointer select-none items-center rounded-lg px-2.5 py-2 text-xs md:text-sm font-medium outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-40',
       inset && 'pl-8',
       destructive
-        ? 'text-rose-600 dark:text-rose-400 data-[highlighted]:bg-rose-500/10 data-[highlighted]:text-rose-700 dark:data-[highlighted]:text-rose-300'
+        ? 'text-rose-600 data-[highlighted]:bg-rose-50 data-[highlighted]:text-rose-700'
         : 'text-[var(--text-primary)] data-[highlighted]:bg-[var(--accent)]/10 data-[highlighted]:text-[var(--accent)]',
       className
     )}

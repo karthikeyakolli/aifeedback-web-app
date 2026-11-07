@@ -119,7 +119,7 @@ export const ExplorePage: React.FC = () => {
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
       {/* Page Header */}
       <div>
-        <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 uppercase tracking-wider">
+        <div className="flex items-center gap-2 text-xs font-semibold text-[var(--accent)] mb-1.5 uppercase tracking-wider">
           <Compass className="w-4 h-4" />
           <span>Public Discovery & AI Scrutiny</span>
         </div>
@@ -257,7 +257,7 @@ export const ExplorePage: React.FC = () => {
                 setSelectedCategory('All');
                 setSelectedTag(null);
               }}
-              className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
+              className="text-[var(--accent)] font-bold hover:underline cursor-pointer"
             >
               Reset all filters
             </button>

@@ -608,13 +608,40 @@ class CommunityRepository:
         parent_comment_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Creates and persists a comment or reply."""
+        # Automated Moderation & Spam Shield
+        from backend.app.services.text_cleaner import audit_and_moderate_content
+        is_ok, reason, _ = audit_and_moderate_content(content)
+        if not is_ok:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Community Moderation Shield: {reason}",
+            )
+
         comment_id = f"cmt_{uuid.uuid4().hex[:12]}"
         now = utc_now_iso()
         is_anon = 1 if is_anonymous else 0
 
         with self.db.session() as conn:
-            # Verify post exists & check lock status
+            # Verify post exists & check lock status (auto-syncing project companion post if needed)
             post = conn.execute("SELECT id, title, author_id, status FROM posts WHERE id = ?", (post_id,)).fetchone()
+            if not post:
+                proj = conn.execute("SELECT id, user_id, name, description, category, demo_url, repository_url FROM projects WHERE id = ?", (post_id,)).fetchone()
+                if proj:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO posts (
+                            id, author_id, title, description, post_type, category,
+                            product_url, status, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, 'product_review', ?, ?, 'published', ?, ?)
+                        """,
+                        (
+                            proj["id"], proj["user_id"], proj["name"], proj["description"],
+                            proj["category"], proj["demo_url"] or proj["repository_url"] or "",
+                            now, now,
+                        ),
+                    )
+                    post = conn.execute("SELECT id, title, author_id, status FROM posts WHERE id = ?", (post_id,)).fetchone()
+
             if not post:
                 raise HTTPException(status_code=404, detail="Post not found.")
             if post["status"] == "locked":
@@ -686,15 +713,29 @@ class CommunityRepository:
                 )
             elif not parent_author_id and post["author_id"] != author_id:
                 notif_id = f"notif_{uuid.uuid4().hex[:12]}"
+                proj_row = conn.execute("SELECT id, name FROM projects WHERE id = ?", (post_id,)).fetchone()
+                if proj_row:
+                    notif_type = "project_review"
+                    notif_title = f"New review on #{proj_row['name']}"
+                    notif_url = f"/project/{proj_row['id']}"
+                    notif_msg = f'{commenter_name} posted a community review on #{proj_row["name"]}: "{content.strip()[:60]}..."'
+                else:
+                    notif_type = "comment"
+                    notif_title = "New comment on your discussion"
+                    notif_url = f"/posts/{post_id}"
+                    notif_msg = f'{commenter_name} commented on "{post["title"][:40]}": "{content.strip()[:60]}..."'
+
                 conn.execute(
                     """INSERT INTO notifications (id, user_id, actor_id, type, title, message, link_url, is_read, created_at)
-                    VALUES (?, ?, ?, 'comment', 'New comment on your discussion', ?, ?, 0, ?)""",
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)""",
                     (
                         notif_id,
                         post["author_id"],
                         None if is_anonymous else author_id,
-                        f'{commenter_name} commented on "{post["title"][:40]}": "{content.strip()[:60]}..."',
-                        f"/posts/{post_id}",
+                        notif_type,
+                        notif_title,
+                        notif_msg,
+                        notif_url,
                         now,
                     ),
                 )
@@ -723,6 +764,77 @@ class CommunityRepository:
                 user_upvoted = bool(uv)
 
             return self._serialize_comment(row, user_upvoted)
+
+    
+    def list_recent_public_comments(
+        self,
+        limit: int = 15,
+        project_id: Optional[str] = None,
+        sort: str = "popular",
+        current_user_id: Optional[str] = None,
+        include_anonymous: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Retrieves recent genuine public comments across projects for Community Voices and Global Discussions Lounge."""
+        with self.db.session() as conn:
+            where_clauses = ["c.status = 'published'"]
+            params: List[Any] = []
+
+            if not include_anonymous:
+                where_clauses.append("c.is_anonymous = 0")
+
+            if project_id:
+                where_clauses.append("(c.post_id = ? OR p.id = ? OR post.id = ?)")
+                params.extend([project_id, project_id, project_id])
+
+            where_sql = " AND ".join(where_clauses)
+
+            order_sql = "c.upvotes_count DESC, c.created_at DESC" if sort == "popular" else "c.created_at DESC"
+
+            sql = f"""
+                SELECT c.id, c.post_id, c.content, c.upvotes_count, c.created_at, c.is_anonymous,
+                       COALESCE(p.name, post.title, 'Project Community') as project_title,
+                       COALESCE(p.id, post.id) as project_id,
+                       COALESCE(p.category, post.category, 'General') as category,
+                       pr.username, pr.display_name, pr.avatar_url
+                FROM comments c
+                LEFT JOIN projects p ON c.post_id = p.id
+                LEFT JOIN posts post ON c.post_id = post.id
+                JOIN profiles pr ON c.author_id = pr.id
+                WHERE {where_sql}
+                ORDER BY {order_sql} LIMIT ?
+            """
+            params.append(limit)
+            rows = conn.execute(sql, params).fetchall()
+
+            user_upvotes = set()
+            if current_user_id and rows:
+                c_ids = [r["id"] for r in rows]
+                placeholders = ",".join("?" for _ in c_ids)
+                upvote_rows = conn.execute(
+                    f"SELECT comment_id FROM comment_votes WHERE user_id = ? AND vote_type = 1 AND comment_id IN ({placeholders})",
+                    [current_user_id, *c_ids],
+                ).fetchall()
+                user_upvotes = {r["comment_id"] for r in upvote_rows}
+
+            results = []
+            for r in rows:
+                is_anon = bool(r["is_anonymous"])
+                results.append({
+                    "id": r["id"],
+                    "postId": r["post_id"],
+                    "content": r["content"],
+                    "upvotesCount": max(0, r["upvotes_count"]),
+                    "createdAt": r["created_at"],
+                    "projectTitle": r["project_title"],
+                    "projectId": r["project_id"],
+                    "category": r["category"],
+                    "username": "anonymous" if is_anon else r["username"],
+                    "displayName": "Anonymous Reviewer" if is_anon else (r["display_name"] or r["username"]),
+                    "avatarUrl": None if is_anon else r["avatar_url"],
+                    "isAnonymous": is_anon,
+                    "userHasUpvoted": r["id"] in user_upvotes,
+                })
+            return results
 
     def list_comments_for_post(
         self, post_id: str, current_user_id: Optional[str] = None
@@ -1704,175 +1816,11 @@ class CommunityRepository:
         }
 
     # -------------------------------------------------------------------------
-    # Demo Seed Data
+    # Seed Data (Clean Multi-User SaaS)
     # -------------------------------------------------------------------------
     def ensure_seed_data(self) -> None:
-        """Seeds initial creator and demo review requests if the database is fresh."""
-        with self.db.session() as conn:
-            user_count = conn.execute("SELECT count(*) as cnt FROM auth_users").fetchone()["cnt"]
-            if user_count > 0:
-                return  # Database already populated
-
-            # Seed demo user: Sarah Chen
-            sarah_id = "usr_sarah_chen"
-            now = utc_now_iso()
-            hashed = hash_password("demo-password-123")
-
-            conn.execute(
-                "INSERT INTO auth_users (id, email, hashed_password, created_at) VALUES (?, ?, ?, ?)",
-                (sarah_id, "sarah.chen@example.com", hashed, now),
-            )
-            conn.execute(
-                """INSERT INTO profiles (id, username, display_name, avatar_url, bio, reputation_score, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    sarah_id,
-                    "sarahc",
-                    "Sarah Chen",
-                    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
-                    "Building developer tools & exploring customer research workflows.",
-                    342,
-                    now,
-                    now,
-                ),
-            )
-
-            # Seed user 2: Daniel Thorne
-            dan_id = "usr_dev_dan"
-            conn.execute(
-                "INSERT INTO auth_users (id, email, hashed_password, created_at) VALUES (?, ?, ?, ?)",
-                (dan_id, "dan@example.com", hashed, now),
-            )
-            conn.execute(
-                """INSERT INTO profiles (id, username, display_name, avatar_url, bio, reputation_score, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    dan_id,
-                    "devdan",
-                    "Daniel Thorne",
-                    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80",
-                    "Senior backend engineer. Fan of local-first tools.",
-                    88,
-                    now,
-                    now,
-                ),
-            )
-
-            # Seed initial Post 1: ReflectTask
-            post1_id = "post_reflect_01"
-            conn.execute(
-                """INSERT INTO posts (
-                    id, author_id, title, description, post_type, product_url,
-                    category, tags, is_anonymous, upvotes_count, comments_count,
-                    status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    post1_id,
-                    sarah_id,
-                    "ReflectTask: Keyboard-first daily task planner. Looking for honest onboarding & sync feedback.",
-                    "I built ReflectTask over the last four months. It is designed for engineers and designers who find Notion or Jira too bloated for daily personal task velocity.\n\nKey features:\n- Modal-less quick entry (Cmd+K everywhere)\n- Local-first IndexedDB persistence with cloud sync\n- Integrated time blocking and Markdown notes\n\nWhere I need community critique:\n1. Is the initial keyboard-shortcut onboarding intuitive, or does it feel overwhelming?\n2. Several beta testers requested two-way Google Calendar sync, while others insist it should stay 100% offline.\n3. How do you feel about the mobile layout when reviewing daily plans away from your desk?",
-                    "product_review",
-                    "https://reflecttask.dev",
-                    "Productivity",
-                    json.dumps(["Productivity", "Keyboard-First", "Local-First", "UX Review"]),
-                    0,
-                    47,
-                    3,
-                    "published",
-                    now,
-                    now,
-                ),
-            )
-
-            # Seed Post 2: QueryLite (Anonymous Creator)
-            post2_id = "post_querylite_02"
-            conn.execute(
-                """INSERT INTO posts (
-                    id, author_id, title, description, post_type, product_url,
-                    category, tags, is_anonymous, upvotes_count, comments_count,
-                    status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    post2_id,
-                    dan_id,
-                    "QueryLite: Embedded SQLite visual inspector with zero setup. Is query latency visualizer useful?",
-                    "Most SQLite GUI tools (DB Browser, DBeaver) are either 15 years old or heavy Java/Electron apps. I wrote QueryLite in Rust + Webview.\n\nFeatures:\n- Instant launch (< 50ms)\n- Execution plan tree visualizer\n- Schema migration diff viewer\n\nI am considering adding an automated index recommendation engine based on slow query history. Would you trust an embedded tool suggesting CREATE INDEX statements, or is that unnecessary scope creep?",
-                    "idea_critique",
-                    "https://github.com/querylite/app",
-                    "Developer Tools",
-                    json.dumps(["SQLite", "Rust", "Database", "Developer Tool"]),
-                    1,  # ANONYMOUS POST
-                    38,
-                    0,
-                    "published",
-                    now,
-                    now,
-                ),
-            )
-
-            # Seed comments for ReflectTask
-            c1_id = "cmt_001"
-            conn.execute(
-                """INSERT INTO comments (
-                    id, post_id, parent_comment_id, author_id, content,
-                    is_anonymous, upvotes_count, is_helpful_flag, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    c1_id,
-                    post1_id,
-                    None,
-                    dan_id,
-                    "The onboarding process is confusing. When I first loaded the screen, I was confronted with a 12-item shortcut cheat sheet with no interactive walkthrough. I had to guess how to create my first backlog bucket.",
-                    1,  # ANONYMOUS COMMENT
-                    14,
-                    1,
-                    "published",
-                    now,
-                    now,
-                ),
-            )
-
-            c2_id = "cmt_002"
-            conn.execute(
-                """INSERT INTO comments (
-                    id, post_id, parent_comment_id, author_id, content,
-                    is_anonymous, upvotes_count, is_helpful_flag, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    c2_id,
-                    post1_id,
-                    c1_id,
-                    sarah_id,
-                    "This is super clear feedback. Would an interactive 3-step checklist (create task, add tag, set schedule) be better than the shortcut modal?",
-                    0,
-                    5,
-                    0,
-                    "published",
-                    now,
-                    now,
-                ),
-            )
-
-            c3_id = "cmt_003"
-            conn.execute(
-                """INSERT INTO comments (
-                    id, post_id, parent_comment_id, author_id, content,
-                    is_anonymous, upvotes_count, is_helpful_flag, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    c3_id,
-                    post1_id,
-                    None,
-                    dan_id,
-                    "I need Google Calendar integration before I could ever switch. If my tasks do not block out real calendar slots, teammates book over my focus hours.",
-                    0,
-                    11,
-                    1,
-                    "published",
-                    now,
-                    now,
-                ),
-            )
+        """No-op: All application accounts and projects are created by real users."""
+        pass
 
     # -------------------------------------------------------------------------
     # Phase 6: Notifications & Social Activity

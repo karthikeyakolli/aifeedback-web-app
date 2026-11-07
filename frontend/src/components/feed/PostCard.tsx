@@ -115,12 +115,12 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
   };
 
   return (
-    <div className="glow-card neomorph-card p-4 sm:p-5 flex gap-3 sm:gap-4 transition-all hover:border-indigo-500/50 dark:hover:border-indigo-400/50 group rounded-2xl relative overflow-hidden">
-      {/* Upvote Pill (Tactile Neomorphic Control with Flame Burst) */}
+    <div className="relative p-4 sm:p-5.5 flex gap-3 sm:gap-4.5 rounded-2xl border border-[var(--border-default)]/80 bg-[var(--surface)]/70 backdrop-blur-md hover:border-[var(--accent)]/50 hover:shadow-[0_12px_32px_rgba(0,0,0,0.06)] dark:hover:shadow-[0_12px_32px_rgba(59,130,246,0.08)] hover:-translate-y-1 transition-all duration-300 group overflow-hidden">
+      {/* Upvote Pill (Tactile Liquid Control) */}
       <div className="flex flex-col items-center shrink-0 relative">
         {showVoteParticle && (
-          <span className="absolute -top-3.5 font-black text-xs text-amber-500 dark:text-amber-400 animate-float-fade pointer-events-none select-none drop-shadow-xs">
-            +1 🔥
+          <span className="absolute -top-3.5 font-bold text-xs text-[var(--accent)] animate-float-fade pointer-events-none select-none drop-shadow-xs">
+            +1
           </span>
         )}
         <button
@@ -133,17 +133,13 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
               ? `Remove upvote from "${post.title}"`
               : `Upvote "${post.title}" (${upvotes} votes)`
           }
-          className={`relative flex flex-col items-center justify-center w-12 py-2.5 rounded-2xl border transition-all duration-150 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[48px] ${
+          className={`relative flex flex-col items-center justify-center w-12 py-2.5 rounded-2xl border transition-all duration-200 cursor-pointer select-none min-h-[48px] ${
             hasUpvoted
-              ? 'bg-gradient-to-b from-amber-50 to-orange-50/60 dark:from-amber-950/40 dark:to-orange-950/20 border-amber-300 dark:border-amber-600/80 text-amber-600 dark:text-amber-400 font-extrabold shadow-[0_2px_12px_rgba(245,158,11,0.2)]'
-              : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 text-[var(--text-muted)] hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-700/60'
+              ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-xs'
+              : 'border-[var(--border-default)] bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:border-[var(--accent)]/40 hover:text-[var(--accent)]'
           }`}
         >
-          {hasUpvoted ? (
-            <Flame className="w-4 h-4 text-amber-500 dark:text-amber-400 fill-amber-500 animate-pulse" />
-          ) : (
-            <ChevronUp className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" />
-          )}
+          <ChevronUp className={`w-4 h-4 transition-transform group-hover:-translate-y-0.5 ${hasUpvoted ? 'stroke-[2.5]' : ''}`} />
           <span className="text-xs font-bold leading-none mt-1 font-mono">{upvotes}</span>
         </button>
       </div>
@@ -169,7 +165,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
           </Badge>
 
           {upvotes >= 15 && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-mono">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-300 font-mono">
               <Flame className="w-2.5 h-2.5 fill-amber-500" />
               Hot
             </span>

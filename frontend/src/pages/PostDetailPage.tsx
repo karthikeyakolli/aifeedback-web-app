@@ -455,7 +455,7 @@ export const PostDetailPage: React.FC = () => {
 
       {/* Creator Personal Workspace Dock (Verified Owner Exclusive) */}
       {isOwner && (
-        <div className="p-5 rounded-3xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/80 via-purple-50/40 to-[var(--bg-surface)] dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+        <div className="p-5 rounded-3xl border border-[var(--border-default)] bg-[var(--surface-raised)] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-600 text-white shadow-xs">

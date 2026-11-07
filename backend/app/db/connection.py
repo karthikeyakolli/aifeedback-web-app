@@ -303,7 +303,7 @@ class DatabaseManager:
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 actor_id TEXT,
-                type TEXT NOT NULL CHECK (type IN ('reply', 'comment', 'upvote', 'ai_ready', 'moderation', 'system')),
+                type TEXT NOT NULL CHECK (type IN ('reply', 'comment', 'project_review', 'upvote', 'ai_ready', 'moderation', 'system')),
                 title TEXT NOT NULL,
                 message TEXT NOT NULL,
                 link_url TEXT NOT NULL,
@@ -753,6 +753,29 @@ class DatabaseManager:
             );
             CREATE INDEX IF NOT EXISTS idx_ai_budgets_user ON ai_budgets(user_id, scope);
 
+            
+            -- Project APK Releases & Quarantine Verification (Section 10)
+            CREATE TABLE IF NOT EXISTS project_apk_releases (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                version_name TEXT NOT NULL,
+                version_code INTEGER DEFAULT 1,
+                release_notes TEXT DEFAULT '',
+                file_name TEXT NOT NULL,
+                file_size_bytes INTEGER NOT NULL,
+                file_sha256 TEXT NOT NULL,
+                package_name TEXT DEFAULT '',
+                min_sdk_version INTEGER DEFAULT 21,
+                target_sdk_version INTEGER DEFAULT 34,
+                status TEXT DEFAULT 'quarantined',
+                quarantine_reason TEXT DEFAULT 'Pending automated malware and signature scan',
+                download_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS git_repository_syncs (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
@@ -769,6 +792,21 @@ class DatabaseManager:
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_git_syncs_proj ON git_repository_syncs(project_id);
+
+            CREATE TABLE IF NOT EXISTS project_changelog_entries (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                version_tag TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                finding_id TEXT,
+                is_public INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_changelog_proj ON project_changelog_entries(project_id);
             """)
 
             # Upgrade conversation_sessions review_id column if not present
@@ -860,6 +898,31 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE profiles ADD COLUMN website_url TEXT;")
             if "skills" not in profile_cols:
                 conn.execute("ALTER TABLE profiles ADD COLUMN skills TEXT DEFAULT '[]';")
+
+            # Upgrade notifications check constraint if needed
+            try:
+                notif_row = cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='notifications'").fetchone()
+                if notif_row and "project_review" not in notif_row[0]:
+                    cur.execute("ALTER TABLE notifications RENAME TO old_notifications")
+                    cur.execute("""
+                        CREATE TABLE notifications (
+                            id TEXT PRIMARY KEY,
+                            user_id TEXT NOT NULL,
+                            actor_id TEXT,
+                            type TEXT NOT NULL CHECK (type IN ('reply', 'comment', 'project_review', 'upvote', 'ai_ready', 'moderation', 'system')),
+                            title TEXT NOT NULL,
+                            message TEXT NOT NULL,
+                            link_url TEXT NOT NULL,
+                            is_read INTEGER NOT NULL DEFAULT 0,
+                            created_at TEXT NOT NULL,
+                            FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE,
+                            FOREIGN KEY (actor_id) REFERENCES profiles(id) ON DELETE SET NULL
+                        )
+                    """)
+                    cur.execute("INSERT INTO notifications SELECT * FROM old_notifications")
+                    cur.execute("DROP TABLE old_notifications")
+            except Exception:
+                pass
 
 
 # Global db manager instance

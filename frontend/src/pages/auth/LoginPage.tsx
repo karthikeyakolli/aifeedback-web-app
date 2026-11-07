@@ -8,7 +8,7 @@ import { AuthVisualPanel } from './AuthVisualPanel';
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loginAsDemoUser, isAuthenticated } = useAuth();
+  const { login, isAuthenticated } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,19 +45,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleDemoLogin = async () => {
-    setError(null);
-    setIsLoading(true);
-    try {
-      await loginAsDemoUser();
-      navigate('/');
-    } catch (err: any) {
-      setError(err.message || 'Demo login failed.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-[var(--bg-app)] text-[var(--text-primary)]">
       <div className="w-full max-w-5xl rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-2">
@@ -67,11 +54,11 @@ export const LoginPage: React.FC = () => {
             {/* Brand Header */}
             <div className="flex items-center justify-between mb-8">
               <Link to="/" className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-xs">
+                <div className="w-9 h-9 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white shadow-xs">
                   <Sparkles className="w-5 h-5" />
                 </div>
-                <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-white">
-                  ResearchIntel
+                <span className="font-extrabold text-base tracking-tight text-[var(--text-primary)]">
+                  FeedbackAI
                 </span>
               </Link>
 
@@ -79,16 +66,16 @@ export const LoginPage: React.FC = () => {
                 to="/"
                 className="text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
-                ← <span className="hidden sm:inline">Back to Community</span><span className="sm:hidden">Back</span>
+                ← <span className="hidden sm:inline">Back to Overview</span><span className="sm:hidden">Back</span>
               </Link>
             </div>
 
             <div className="space-y-1 mb-6">
-              <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+              <h1 className="text-2xl font-extrabold tracking-tight text-[var(--text-primary)]">
                 Welcome back
               </h1>
               <p className="text-xs text-[var(--text-muted)]">
-                Sign in to manage your review requests, track feedback, and use the AI Research Studio.
+                Sign in to manage your projects, track reviews, and explore AI findings.
               </p>
             </div>
 
@@ -175,19 +162,6 @@ export const LoginPage: React.FC = () => {
                 Sign in to Account
               </Button>
             </form>
-
-            {/* Quick Demo Access */}
-            <div className="mt-5 pt-5 border-t border-[var(--border-subtle)]">
-              <button
-                type="button"
-                onClick={handleDemoLogin}
-                disabled={isLoading}
-                className="w-full py-2.5 px-4 rounded-xl border border-dashed border-indigo-300 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer min-h-[44px]"
-              >
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span>Sign In as Demo Product Founder (Sarah Chen)</span>
-              </button>
-            </div>
           </div>
 
           {/* Footer Link */}
@@ -195,7 +169,7 @@ export const LoginPage: React.FC = () => {
             Don't have an account yet?{' '}
             <Link
               to="/signup"
-              className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+              className="font-bold text-[var(--accent)] hover:underline"
             >
               Create free account
             </Link>

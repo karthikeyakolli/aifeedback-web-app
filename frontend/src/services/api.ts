@@ -31,6 +31,8 @@ import type {
   ReportExportResponse,
   PublicProject,
   PublicUpvoteResponse,
+  PublicCommentRecent,
+  ProjectApkRelease,
   CreatorProfile,
   CreatorProfileUpdatePayload,
   CreatorStudioOverview,
@@ -53,59 +55,20 @@ import type {
   FindingEvidenceCitation,
   AIBudget,
   BudgetUpdatePayload,
+  ProjectChangelogEntry,
 } from '../types';
-import { mockPosts, mockComments } from '../fixtures/mockData';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 export const TOKEN_STORAGE_KEY = 'pri_auth_token';
 const LOCAL_PROJECTS_KEY = 'pri_local_projects';
-const LOCAL_REPORTS_KEY = 'pri_local_reports';
-
-const getInitialProjects = (): Project[] => [
-  {
-    id: 'proj_demo_cloudsync',
-    userId: 'usr_sarah_chen',
-    name: 'CloudSync Pro',
-    tagline: 'Encrypted peer-to-peer file replication and sync engine',
-    category: 'developer-tools',
-    description: 'Distributed peer-to-peer file synchronization engine using TLS 1.3 tunnels and SQLite client caching with monotonic sequence numbers.',
-    repositoryUrl: 'https://github.com/example/cloudsync-pro',
-    demoUrl: 'https://cloudsync.example.com',
-    status: 'ready',
-    isPublic: true,
-    upvotesCount: 24,
-    reviewsCount: 1,
-    createdAt: '2026-10-30T12:00:00Z',
-    updatedAt: '2026-10-30T12:00:00Z',
-  },
-  {
-    id: 'proj_demo_authshield',
-    userId: 'usr_sarah_chen',
-    name: 'AuthShield Enterprise',
-    tagline: 'Cryptographic token validation gateway and anomaly monitor',
-    category: 'saas-b2b',
-    description: 'Zero-trust authorization proxy that cryptographically validates JWT claims, tenant boundaries, and token replay signatures.',
-    repositoryUrl: 'https://github.com/example/authshield',
-    status: 'ready',
-    isPublic: true,
-    upvotesCount: 42,
-    reviewsCount: 1,
-    createdAt: '2026-10-28T09:00:00Z',
-    updatedAt: '2026-10-28T09:00:00Z',
-  },
-];
 
 const getStoredProjects = (): Project[] => {
   try {
     const raw = localStorage.getItem(LOCAL_PROJECTS_KEY);
     if (raw) return JSON.parse(raw);
   } catch {}
-  const initial = getInitialProjects();
-  try {
-    localStorage.setItem(LOCAL_PROJECTS_KEY, JSON.stringify(initial));
-  } catch {}
-  return initial;
+  return [];
 };
 
 const saveStoredProjects = (projs: Project[]): void => {
@@ -256,7 +219,7 @@ export const api = {
       });
       if (res.ok) return await res.json();
     } catch {}
-    return mockPosts;
+    return [];
   },
 
   async getPostById(postId: string): Promise<Post | null> {
@@ -267,7 +230,7 @@ export const api = {
       if (res.status === 404) return null;
       if (res.ok) return await res.json();
     } catch {}
-    return mockPosts.find(p => p.id === postId) || null;
+    return null;
   },
 
   async createPost(data: {
@@ -359,6 +322,27 @@ export const api = {
   // ---------------------------------------------------------------------------
   // Comments CRUD, Threaded Replies, Voting
   // ---------------------------------------------------------------------------
+  async getRecentComments(
+    optionsOrLimit: number | { limit?: number; projectId?: string; sort?: 'popular' | 'recent' } = 25
+  ): Promise<PublicCommentRecent[]> {
+    try {
+      const limit = typeof optionsOrLimit === 'number' ? optionsOrLimit : (optionsOrLimit.limit || 25);
+      const projectId = typeof optionsOrLimit === 'object' ? optionsOrLimit.projectId : undefined;
+      const sort = typeof optionsOrLimit === 'object' ? optionsOrLimit.sort : 'popular';
+
+      const query = new URLSearchParams();
+      query.set('limit', String(limit));
+      if (projectId) query.set('project_id', projectId);
+      if (sort) query.set('sort', sort);
+
+      const res = await fetch(`${API_BASE}/comments/recent?${query.toString()}`, {
+        headers: getHeaders(true),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return [];
+  },
+
   async getComments(postId: string): Promise<Comment[]> {
     try {
       const res = await fetch(`${API_BASE}/comments/post/${postId}`, {
@@ -366,7 +350,7 @@ export const api = {
       });
       if (res.ok) return await res.json();
     } catch {}
-    return mockComments[postId] || [];
+    return [];
   },
 
   async addComment(data: {
@@ -950,34 +934,23 @@ export const api = {
   // Project Management & Intake (Phase 2 & 4)
   // ---------------------------------------------------------------------------
   async createProject(payload: ProjectCreatePayload): Promise<Project> {
-    try {
-      const res = await fetch(`${API_BASE}/projects`, {
-        method: 'POST',
-        headers: getHeaders(true),
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) return await res.json();
-    } catch {}
-    const projs = getStoredProjects();
-    const newProj: Project = {
-      id: 'proj_' + Math.random().toString(36).slice(2, 10),
-      userId: 'usr_sarah_chen',
-      name: payload.name,
-      tagline: payload.tagline,
-      category: payload.category,
-      description: payload.description || '',
-      repositoryUrl: payload.repositoryUrl || null,
-      demoUrl: payload.demoUrl || null,
-      isPublic: true,
-      status: 'ready',
-      upvotesCount: 0,
-      reviewsCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    projs.unshift(newProj);
-    saveStoredProjects(projs);
-    return newProj;
+    const res = await fetch(`${API_BASE}/projects`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) return await res.json();
+    const err = await res.json().catch(() => ({ detail: 'Failed to create project' }));
+    throw new Error(err.detail || 'Failed to create project');
+  },
+
+  async getProjects(params?: {
+    status?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Project[]> {
+    return this.getPersonalProjects(params);
   },
 
   async getPersonalProjects(params?: {
@@ -998,12 +971,13 @@ export const api = {
       });
       if (res.ok) return await res.json();
     } catch {}
-    return getStoredProjects();
+    return [];
   },
 
   async getPublicProjects(params?: {
     category?: string;
     search?: string;
+    sort?: 'trending' | 'new' | 'most_discussed' | string;
     limit?: number;
     offset?: number;
   }): Promise<PublicProject[]> {
@@ -1011,6 +985,7 @@ export const api = {
       const query = new URLSearchParams();
       if (params?.category && params.category !== 'all') query.set('category', params.category);
       if (params?.search) query.set('search', params.search);
+      if (params?.sort) query.set('sort', params.sort);
       if (params?.limit) query.set('limit', String(params.limit));
       if (params?.offset) query.set('offset', String(params.offset));
 
@@ -1019,53 +994,59 @@ export const api = {
       });
       if (res.ok) return await res.json();
     } catch {}
-    const projs = getStoredProjects().filter(p => p.isPublic);
-    return projs.map(p => ({
-      id: p.id,
-      name: p.name,
-      tagline: p.tagline,
-      description: p.description,
-      category: p.category,
-      repositoryUrl: p.repositoryUrl,
-      demoUrl: p.demoUrl,
-      status: p.status,
-      isPublic: p.isPublic,
-      upvotesCount: p.upvotesCount,
-      reviewsCount: p.reviewsCount || 0,
-      creatorDisplayName: 'Sarah Chen',
-      creatorUsername: 'sarahc',
-      createdAt: p.createdAt,
-      updatedAt: p.updatedAt,
-    }));
+    return [];
   },
 
-  async getPublicProject(projectId: string): Promise<PublicProject> {
+  // ---------------------------------------------------------------------------
+  // Android APK Releases & Quarantine Management
+  // ---------------------------------------------------------------------------
+  async uploadProjectApk(projectId: string, formData: FormData): Promise<ProjectApkRelease> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/releases/apk`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getStoredToken() || ''}`,
+      },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to upload APK release' }));
+      throw new Error(err.detail || 'Failed to upload APK release');
+    }
+    return res.json();
+  },
+
+  async getProjectApkReleases(projectId: string): Promise<ProjectApkRelease[]> {
     try {
-      const res = await fetch(`${API_BASE}/projects/public/${projectId}`, {
-        headers: getHeaders(false),
+      const res = await fetch(`${API_BASE}/projects/${projectId}/releases/apk`, {
+        headers: getHeaders(true),
       });
       if (res.ok) return await res.json();
     } catch {}
-    const p = getStoredProjects().find(proj => proj.id === projectId);
-    if (p) {
-      return {
-        id: p.id,
-        name: p.name,
-        tagline: p.tagline,
-        description: p.description,
-        category: p.category,
-        repositoryUrl: p.repositoryUrl,
-        demoUrl: p.demoUrl,
-        status: p.status,
-        isPublic: p.isPublic,
-        upvotesCount: p.upvotesCount,
-        reviewsCount: p.reviewsCount || 0,
-        creatorDisplayName: 'Sarah Chen',
-        creatorUsername: 'sarahc',
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-      };
+    return [];
+  },
+
+  async updateProjectApkReleaseStatus(projectId: string, releaseId: string, status: string): Promise<ProjectApkRelease> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/releases/apk/${releaseId}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update release status' }));
+      throw new Error(err.detail || 'Failed to update release status');
     }
+    return res.json();
+  },
+
+  getApkDownloadUrl(projectId: string, releaseId: string): string {
+    return `${API_BASE}/projects/${projectId}/releases/apk/${releaseId}/download`;
+  },
+
+  async getPublicProject(projectId: string): Promise<PublicProject> {
+    const res = await fetch(`${API_BASE}/projects/public/${projectId}`, {
+      headers: getHeaders(false),
+    });
+    if (res.ok) return await res.json();
     throw new Error('Public project not found');
   },
 
@@ -1147,196 +1128,48 @@ export const api = {
     findingId: string,
     status: 'open' | 'in_progress' | 'addressed'
   ): Promise<FeedbackFinding> {
-    try {
-      const res = await fetch(`${API_BASE}/findings/${findingId}/status`, {
-        method: 'PATCH',
-        headers: getHeaders(true),
-        body: JSON.stringify({ status }),
-      });
-      if (res.ok) return await res.json();
-    } catch {}
-    return {
-      id: findingId,
-      reportId: 'rep_local',
-      projectId: 'proj_demo_cloudsync',
-      title: 'Resolved Finding',
-      severity: 'medium',
-      category: 'architecture',
-      observation: 'Status updated locally.',
-      evidenceQuote: '',
-      recommendation: '',
-      status,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    const res = await fetch(`${API_BASE}/findings/${findingId}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify({ status }),
+    });
+    if (res.ok) return await res.json();
+    throw new Error('Failed to update finding status');
   },
 
   async startAIReview(
     projectId: string,
     payload?: AIReviewStartPayload
   ): Promise<AIReviewStatus> {
-    try {
-      const res = await fetch(`${API_BASE}/projects/${projectId}/review/start`, {
-        method: 'POST',
-        headers: getHeaders(true),
-        body: JSON.stringify(payload || {}),
-      });
-      if (res.ok) return await res.json();
-    } catch {}
-    const rep: FeedbackReport = {
-      id: 'rep_' + Math.random().toString(36).slice(2, 9),
-      reviewId: 'rev_' + Math.random().toString(36).slice(2, 9),
-      projectId,
-      executiveSummary: 'Automated technical evaluation completed. The system exhibits high domain alignment and solid core abstractions. Architectural resilience and resource throttling should be strengthened prior to scaled deployment.',
-      strengthsSummary: 'High code cohesion, clear separation of domain logic, and clean developer ergonomics.',
-      totalFindingsCount: 3,
-      blockersCount: 0,
-      highCount: 1,
-      mediumCount: 2,
-      lowCount: 0,
-      findings: [
-        {
-          id: 'find_1',
-          reportId: 'rep_demo',
-          projectId,
-          title: 'Verify State Recovery & Fault Tolerance',
-          severity: 'high',
-          category: 'architecture',
-          observation: 'Lacks explicit transactional snapshots during abrupt client network partitions.',
-          evidenceQuote: 'Peer-to-peer synchronization engine caching with monotonic sequence numbers.',
-          recommendation: 'Implement write-ahead logging (WAL) snapshotting to guarantee zero data loss.',
-          status: 'open',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: 'find_2',
-          reportId: 'rep_demo',
-          projectId,
-          title: 'Establish Bounded Resource & Memory Throttling',
-          severity: 'medium',
-          category: 'performance',
-          observation: 'Unbounded background worker tasks risk thread starvation under high peer connection bursts.',
-          evidenceQuote: 'Distributed peer-to-peer file replication service',
-          recommendation: 'Introduce a leaky-bucket rate limiter with fixed worker pool bounds.',
-          status: 'open',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: 'find_3',
-          reportId: 'rep_demo',
-          projectId,
-          title: 'Enforce Cryptographic Authorization & Scope Verification',
-          severity: 'medium',
-          category: 'security',
-          observation: 'Incoming payload tokens must verify aud and iss claims to prevent cross-tenant impersonation.',
-          evidenceQuote: 'TLS 1.3 tunnels and SQLite client caching',
-          recommendation: 'Validate cryptographic signatures on all incoming handshake payloads.',
-          status: 'open',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-      ],
-      createdAt: new Date().toISOString(),
-    };
-    try {
-      const reports = JSON.parse(localStorage.getItem(LOCAL_REPORTS_KEY) || '{}');
-      reports[projectId] = rep;
-      localStorage.setItem(LOCAL_REPORTS_KEY, JSON.stringify(reports));
-    } catch {}
-    return {
-      id: rep.reviewId,
-      projectId,
-      userId: 'usr_sarah_chen',
-      provider: 'openrouter',
-      modelId: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
-      status: 'completed',
-      executionDurationMs: 1450,
-      createdAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-    };
+    const res = await fetch(`${API_BASE}/projects/${projectId}/review/start`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(payload || {}),
+    });
+    if (res.ok) return await res.json();
+    const err = await res.json().catch(() => ({ detail: 'Failed to initiate AI review' }));
+    throw new Error(err.detail || 'Failed to initiate AI review');
   },
 
   async getAIReviewStatus(
     projectId: string,
     reviewId: string
   ): Promise<AIReviewStatus> {
-    try {
-      const res = await fetch(`${API_BASE}/projects/${projectId}/reviews/${reviewId}/status`, {
-        headers: getHeaders(true),
-      });
-      if (res.ok) return await res.json();
-    } catch {}
-    return {
-      id: reviewId,
-      projectId,
-      userId: 'usr_sarah_chen',
-      provider: 'openrouter',
-      modelId: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
-      status: 'completed',
-      executionDurationMs: 1450,
-      createdAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-    };
+    const res = await fetch(`${API_BASE}/projects/${projectId}/reviews/${reviewId}/status`, {
+      headers: getHeaders(true),
+    });
+    if (res.ok) return await res.json();
+    throw new Error('Failed to fetch AI review status');
   },
 
   async getProjectFeedbackReport(
     projectId: string
   ): Promise<FeedbackReport | null> {
-    try {
-      const res = await fetch(`${API_BASE}/projects/${projectId}/report`, {
-        headers: getHeaders(true),
-      });
-      if (res.ok) return await res.json();
-    } catch {}
-    try {
-      const reports = JSON.parse(localStorage.getItem(LOCAL_REPORTS_KEY) || '{}');
-      if (reports[projectId]) return reports[projectId];
-    } catch {}
-    return {
-      id: 'rep_default_' + projectId,
-      reviewId: 'rev_default_' + projectId,
-      projectId,
-      executiveSummary: 'Automated technical evaluation completed. The system exhibits high domain alignment and solid core abstractions. Architectural resilience and resource throttling should be strengthened prior to scaled deployment.',
-      strengthsSummary: 'High code cohesion, clear separation of domain logic, and clean developer ergonomics.',
-      totalFindingsCount: 2,
-      blockersCount: 0,
-      highCount: 1,
-      mediumCount: 1,
-      lowCount: 0,
-      findings: [
-        {
-          id: 'find_1',
-          reportId: 'rep_demo',
-          projectId,
-          title: 'Verify State Recovery & Fault Tolerance',
-          severity: 'high',
-          category: 'architecture',
-          observation: 'Lacks explicit transactional snapshots during abrupt client network partitions.',
-          evidenceQuote: 'Peer-to-peer synchronization engine caching with monotonic sequence numbers.',
-          recommendation: 'Implement write-ahead logging (WAL) snapshotting to guarantee zero data loss.',
-          status: 'open',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: 'find_2',
-          reportId: 'rep_demo',
-          projectId,
-          title: 'Establish Bounded Resource & Memory Throttling',
-          severity: 'medium',
-          category: 'performance',
-          observation: 'Unbounded background worker tasks risk thread starvation under high peer connection bursts.',
-          evidenceQuote: 'Distributed peer-to-peer file replication service',
-          recommendation: 'Introduce a leaky-bucket rate limiter with fixed worker pool bounds.',
-          status: 'open',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-      ],
-      createdAt: new Date().toISOString(),
-    };
+    const res = await fetch(`${API_BASE}/projects/${projectId}/report`, {
+      headers: getHeaders(true),
+    });
+    if (res.ok) return await res.json();
+    return null;
   },
 
   async getProjectReviews(
@@ -2029,6 +1862,52 @@ export const api = {
       throw new Error(err.detail || 'Failed to update budget');
     }
     return res.json();
+  },
+
+  async getProjectChangelog(projectId: string): Promise<ProjectChangelogEntry[]> {
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/changelog`, {
+        headers: getHeaders(true),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return [];
+  },
+
+  async createProjectChangelog(
+    projectId: string,
+    data: {
+      versionTag: string;
+      title: string;
+      description: string;
+      findingId?: string;
+      isPublic?: boolean;
+    }
+  ): Promise<ProjectChangelogEntry> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/changelog`, {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({
+        version_tag: data.versionTag,
+        title: data.title,
+        description: data.description,
+        finding_id: data.findingId,
+        is_public: data.isPublic ?? true,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to create changelog entry' }));
+      throw new Error(err.detail || 'Failed to create changelog entry');
+    }
+    return res.json();
+  },
+
+  async deleteProjectChangelog(projectId: string, entryId: string): Promise<boolean> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/changelog/${entryId}`, {
+      method: 'DELETE',
+      headers: getHeaders(true),
+    });
+    return res.ok;
   },
 };
 

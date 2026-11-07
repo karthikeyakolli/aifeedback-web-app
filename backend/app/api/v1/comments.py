@@ -9,6 +9,7 @@ from backend.app.schemas.comment import (
     CommentCreate,
     CommentUpdate,
     CommentVoteResponse,
+    PublicCommentRecent,
 )
 from backend.app.services.auth_service import (
     get_current_user_required,
@@ -17,6 +18,25 @@ from backend.app.services.auth_service import (
 from backend.app.db.repository import community_repo
 
 router = APIRouter(prefix="/comments", tags=["Comments"])
+
+
+@router.get("/recent", response_model=List[PublicCommentRecent])
+async def get_recent_public_comments(
+    limit: int = 25,
+    project_id: Optional[str] = None,
+    sort: str = "popular",
+    user: Optional[Dict[str, Any]] = Depends(get_current_user_optional),
+) -> List[PublicCommentRecent]:
+    """Retrieves recent genuine public comments across projects for Community Voices and Global Discussion Lounge."""
+    current_user_id = user["sub"] if user else None
+    comments = community_repo.list_recent_public_comments(
+        limit=min(limit, 100),
+        project_id=project_id,
+        sort=sort,
+        current_user_id=current_user_id,
+        include_anonymous=True,
+    )
+    return [PublicCommentRecent(**c) for c in comments]
 
 
 @router.get("/post/{post_id}", response_model=List[CommentResponse])

@@ -4,9 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
-  const isProd = mode === 'production';
-  const base = process.env.VITE_BASE_PATH || (isProd ? '/aifeedback-web-app/' : '/');
+export default defineConfig(() => {
+  const base = process.env.VITE_BASE_PATH || '/';
 
   return {
     base,

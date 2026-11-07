@@ -38,11 +38,11 @@ export const AppLoadingScreen: React.FC<AppLoadingScreenProps> = ({
 
         {/* Brand Titles */}
         <div className="space-y-1">
-          <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-            ResearchIntel
+          <h1 className="text-xl font-extrabold tracking-tight text-[var(--text-primary)]">
+            FeedbackAI
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-            Anonymous Community Feedback & Evidence-Grounded AI
+          <p className="text-xs text-[var(--text-muted)] font-medium">
+            Product Intelligence Network
           </p>
         </div>
 

@@ -7,14 +7,10 @@ import {
   PlusCircle,
   Database,
   BarChart3,
-  Moon,
-  Sun,
-  Monitor,
   ArrowRight,
   CornerDownLeft,
   X,
 } from 'lucide-react';
-import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 
 interface CommandItem {
@@ -34,7 +30,6 @@ interface CommandPaletteProps {
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
-  const { resolvedTheme, setTheme } = useTheme();
   const { isAuthenticated, openAuthModal } = useAuth();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -130,33 +125,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
         keywords: ['gemini', 'groq', 'performance', 'latency', 'matrix', 'comparison'],
       },
       {
-        id: 'theme-toggle',
-        title: resolvedTheme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme',
-        subtitle: `Currently using ${resolvedTheme} mode`,
+        id: 'pref-settings',
+        title: 'Account & Workspace Settings',
+        subtitle: 'Manage profile, notifications, and security keys',
         category: 'Preferences',
-        icon: resolvedTheme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-400" />,
+        icon: <Sparkles className="w-4 h-4 text-slate-500" />,
         action: () => {
-          setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
+          navigate('/settings');
           onClose();
         },
-        keywords: ['theme', 'dark', 'light', 'mode', 'color', 'appearance'],
-      },
-      {
-        id: 'theme-system',
-        title: 'Use System Theme Preference',
-        subtitle: 'Sync color scheme with operating system settings',
-        category: 'Preferences',
-        icon: <Monitor className="w-4 h-4 text-slate-400" />,
-        action: () => {
-          setTheme('system');
-          onClose();
-        },
-        keywords: ['system', 'os', 'auto', 'theme'],
+        keywords: ['settings', 'preferences', 'profile', 'keys', 'account'],
       },
     ];
 
     return items;
-  }, [navigate, onClose, isAuthenticated, openAuthModal, resolvedTheme, setTheme]);
+  }, [navigate, onClose, isAuthenticated, openAuthModal]);
 
   // Filter commands by search query
   const filteredCommands = useMemo(() => {
@@ -321,7 +304,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
               <span>to select</span>
             </span>
           </div>
-          <span className="text-[10px] font-mono">ResearchIntel Global Spotlight</span>
+          <span className="text-[10px] font-mono">FeedbackAI Spotlight</span>
         </div>
       </div>
     </div>

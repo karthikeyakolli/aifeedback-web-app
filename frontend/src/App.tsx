@@ -5,14 +5,17 @@ import { SpaceProvider } from './context/SpaceContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { HomePage } from './pages/HomePage';
 import { ExplorePage } from './pages/ExplorePage';
+import { DiscussionsPage } from './pages/DiscussionsPage';
 import { PostDetailPage } from './pages/PostDetailPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
-import { PublicProjectDetailPage } from './pages/public/PublicProjectDetailPage';
+import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import { PublishProjectPage } from './pages/PublishProjectPage';
+import { AIWorkspacePage } from './pages/AIWorkspacePage';
+import { ProfilePage } from './pages/ProfilePage';
 import { SavedPostsPage } from './pages/SavedPostsPage';
 import { MyActivityPage } from './pages/MyActivityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ModerationPage } from './pages/ModerationPage';
-import { DeveloperWorkspacePage } from './pages/DeveloperWorkspacePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 import { PersonalHomePage } from './pages/personal/PersonalHomePage';
@@ -52,36 +55,48 @@ export function App() {
 
               {/* Global Application Shell Routes */}
               <Route element={<AppLayout />}>
-                {/* Public Space (PUB-00 to PUB-03) */}
+                {/* One Unified Navigation Public Exploration Routes */}
                 <Route path="/" element={<HomePage />} />
-                <Route path="/public" element={<ExplorePage />} />
                 <Route path="/explore" element={<ExplorePage />} />
-                <Route path="/discussions" element={<ExplorePage />} />
+                <Route path="/public" element={<ExplorePage />} />
+                <Route path="/discussions" element={<DiscussionsPage />} />
+            <Route path="/public/discussions" element={<DiscussionsPage />} />
+
+                {/* Dedicated Unified Project Detail & Discussion */}
+                <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                <Route path="/public/projects/:id" element={<ProjectDetailPage />} />
                 <Route path="/posts/:id" element={<PostDetailPage />} />
                 <Route path="/discussions/:id" element={<PostDetailPage />} />
                 <Route path="/products/:id" element={<ProductDetailPage />} />
-                <Route path="/public/projects/:id" element={<PublicProjectDetailPage />} />
+
+                {/* Public Creator Showcase */}
                 <Route path="/creators/:username" element={<PublicCreatorProfilePage />} />
                 <Route path="/public/creators/:username" element={<PublicCreatorProfilePage />} />
 
-                {/* Personal Space (PER-01 to PER-07) - Protected */}
+                {/* Authenticated Unified Routes - Protected (Login Required) */}
                 <Route element={<ProtectedRoute />}>
+                  <Route path="/workspace" element={<AIWorkspacePage />} />
+                  <Route path="/assistant" element={<AIWorkspacePage />} />
+                  <Route path="/publish" element={<PublishProjectPage />} />
+                  <Route path="/profile" element={<ProfilePage />} />
+                  <Route path="/my-projects" element={<ProfilePage />} />
+                  <Route path="/saved" element={<SavedPostsPage />} />
+                  <Route path="/activity" element={<MyActivityPage />} />
+
+                  {/* Deep Project Workspace & Setup */}
                   <Route path="/personal" element={<PersonalHomePage />} />
                   <Route path="/personal/projects/new" element={<NewProjectPage />} />
                   <Route path="/personal/projects/:id" element={<ProjectSetupPage />} />
                   <Route path="/personal/projects/:id/setup" element={<ProjectSetupPage />} />
                   <Route path="/personal/projects/:id/report" element={<FeedbackReportPage />} />
                   <Route path="/projects/:id/report" element={<FeedbackReportPage />} />
-                  <Route path="/create" element={<NewProjectPage />} />
-                  <Route path="/saved" element={<SavedPostsPage />} />
-                  <Route path="/activity" element={<MyActivityPage />} />
+                  <Route path="/create" element={<PublishProjectPage />} />
 
-                  {/* Creator Space (CRE-01 to CRE-03) - Protected */}
+                  {/* Creator Tools */}
                   <Route path="/creator" element={<CreatorStudioPage />} />
                   <Route path="/creator/profile" element={<CreatorProfilePage />} />
-                  <Route path="/creator/lab" element={<DeveloperWorkspacePage />} />
 
-                  {/* Account Settings - Protected */}
+                  {/* Account Settings */}
                   <Route path="/settings" element={<SettingsPage />} />
                 </Route>
 
@@ -90,9 +105,6 @@ export function App() {
                   <Route path="/moderation" element={<ModerationPage />} />
                 </Route>
 
-                {/* Developer Diagnostic Workspace */}
-                <Route path="/developer" element={<DeveloperWorkspacePage />} />
-                <Route path="/developer/ai-lab" element={<DeveloperWorkspacePage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>
@@ -102,5 +114,4 @@ export function App() {
     </ThemeProvider>
   );
 }
-
 export default App;

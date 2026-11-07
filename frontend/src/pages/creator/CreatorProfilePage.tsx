@@ -397,7 +397,7 @@ export const CreatorProfilePage: React.FC = () => {
 
           <div className="p-6 rounded-2xl border border-[var(--border-default)] bg-[var(--surface)] shadow-xs space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-sky-600 flex items-center justify-center text-white font-black text-xl shadow-xs shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[var(--accent)] border border-blue-200/70 flex items-center justify-center font-black text-xl shadow-xs shrink-0">
                 {(displayName || profile.username).charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">

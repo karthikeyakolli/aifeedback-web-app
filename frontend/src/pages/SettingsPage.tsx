@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Settings as SettingsIcon,
   Sun,
-  Moon,
-  Laptop,
   Cpu,
   Database,
   CheckCircle2,
@@ -21,7 +19,6 @@ import {
   Check,
   Zap,
 } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -36,7 +33,6 @@ import type {
 } from '../types';
 
 export const SettingsPage: React.FC = () => {
-  const { theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
 
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -422,19 +418,19 @@ export const SettingsPage: React.FC = () => {
           )}
 
           {/* Vault Security Summary Card */}
-          <Card className="p-5 sm:p-6 space-y-3 bg-gradient-to-br from-slate-50 to-slate-100/60 dark:from-slate-900/60 dark:to-slate-900/20 border-slate-200/80 dark:border-slate-800">
+          <Card className="p-5 sm:p-6 space-y-3 bg-[var(--surface-raised)] border border-[var(--border-default)]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-indigo-500" />
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                  <Lock className="w-4 h-4 text-[var(--accent)]" />
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--text-primary)]">
                     Encrypted BYOK Credential Vault
                   </h2>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
                     AES-256-GCM
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-[var(--text-muted)]">
                   Your API keys are encrypted server-side with authenticated Additional Associated Data (AAD) bound to your user ID.
                   Plaintext keys are never returned to the browser or stored unencrypted.
                 </p>
@@ -929,50 +925,22 @@ export const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Theme Settings */}
+          {/* Interface Theme */}
           <Card className="p-5 sm:p-6 space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Interface Appearance
             </h2>
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setTheme('light')}
-                className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                  theme === 'light'
-                    ? 'border-indigo-600 bg-indigo-50/60 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 ring-1 ring-indigo-500'
-                    : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
-                }`}
-              >
-                <Sun className="w-5 h-5 mb-1.5 text-amber-500" />
-                <span>Light</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTheme('dark')}
-                className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                  theme === 'dark'
-                    ? 'border-indigo-600 bg-indigo-50/60 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 ring-1 ring-indigo-500'
-                    : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
-                }`}
-              >
-                <Moon className="w-5 h-5 mb-1.5 text-indigo-400" />
-                <span>Dark</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTheme('system')}
-                className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                  theme === 'system'
-                    ? 'border-indigo-600 bg-indigo-50/60 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 ring-1 ring-indigo-500'
-                    : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
-                }`}
-              >
-                <Laptop className="w-5 h-5 mb-1.5 text-slate-400" />
-                <span>System</span>
-              </button>
+            <div className="flex items-center justify-between p-3.5 rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)]">
+              <div className="flex items-center gap-3">
+                <Sun className="w-5 h-5 text-amber-500" />
+                <div>
+                  <p className="text-xs font-semibold text-[var(--text-primary)]">Clean Minimalist Light Mode</p>
+                  <p className="text-[11px] text-[var(--text-muted)]">High-contrast, distraction-free SaaS interface theme</p>
+                </div>
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Active
+              </span>
             </div>
           </Card>
 
@@ -990,7 +958,8 @@ export const SettingsPage: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    defaultValue={user?.displayName || 'Sarah Chen'}
+                    defaultValue={user?.displayName || ''}
+                    placeholder="Your Name"
                     className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-900 dark:text-slate-100"
                   />
                 </div>
@@ -1002,7 +971,8 @@ export const SettingsPage: React.FC = () => {
                   <input
                     type="text"
                     disabled
-                    defaultValue={user?.username || 'sarahc'}
+                    defaultValue={user?.username || ''}
+                    placeholder="username"
                     className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900 text-sm text-slate-500 cursor-not-allowed"
                   />
                 </div>
@@ -1014,7 +984,8 @@ export const SettingsPage: React.FC = () => {
                 </label>
                 <textarea
                   rows={2}
-                  defaultValue={user?.bio || 'Building developer tools & exploring customer research workflows.'}
+                  defaultValue={user?.bio || ''}
+                  placeholder="Tell the community about yourself and what you are building."
                   className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-900 dark:text-slate-100"
                 />
               </div>

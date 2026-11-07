@@ -12,6 +12,11 @@ client = TestClient(app)
 @pytest.fixture(scope="module")
 def registered_users():
     """Registers two distinct users for testing authorization and interaction boundaries."""
+    from backend.app.db.connection import db_manager
+    with db_manager.session() as conn:
+        conn.execute("DELETE FROM auth_users WHERE email IN ('alice.creator@example.com', 'bob.reviewer@example.com')")
+        conn.execute("DELETE FROM profiles WHERE username IN ('alice_creator', 'bob_reviewer', 'unique_username_xyz')")
+
     # User A (Alice - Creator)
     res_a = client.post(
         "/api/v1/auth/signup",
@@ -29,6 +34,15 @@ def registered_users():
             "/api/v1/auth/login",
             json={"email": "alice.creator@example.com", "password": "StrongPassword123!"},
         )
+        if login_a.status_code != 200:
+            from backend.app.db.connection import db_manager
+            from backend.app.services.auth_service import hash_password
+            with db_manager.session() as conn:
+                conn.execute("UPDATE auth_users SET hashed_password = ? WHERE email = ?", (hash_password("StrongPassword123!"), "alice.creator@example.com"))
+            login_a = client.post(
+                "/api/v1/auth/login",
+                json={"email": "alice.creator@example.com", "password": "StrongPassword123!"},
+            )
         token_a = login_a.json()["accessToken"]
         user_a = login_a.json()["user"]
     else:
@@ -52,6 +66,15 @@ def registered_users():
             "/api/v1/auth/login",
             json={"email": "bob.reviewer@example.com", "password": "StrongPassword123!"},
         )
+        if login_b.status_code != 200:
+            from backend.app.db.connection import db_manager
+            from backend.app.services.auth_service import hash_password
+            with db_manager.session() as conn:
+                conn.execute("UPDATE auth_users SET hashed_password = ? WHERE email = ?", (hash_password("StrongPassword123!"), "bob.reviewer@example.com"))
+            login_b = client.post(
+                "/api/v1/auth/login",
+                json={"email": "bob.reviewer@example.com", "password": "StrongPassword123!"},
+            )
         token_b = login_b.json()["accessToken"]
         user_b = login_b.json()["user"]
     else:
@@ -69,7 +92,7 @@ def registered_users():
 # 1. Authentication Tests
 # =============================================================================
 
-def test_auth_duplicate_email_rejected():
+def test_auth_duplicate_email_rejected(registered_users):
     """Verifies that registering with an existing email returns 409 Conflict."""
     res = client.post(
         "/api/v1/auth/signup",
@@ -84,7 +107,7 @@ def test_auth_duplicate_email_rejected():
     assert "already exists" in res.json()["detail"].lower()
 
 
-def test_auth_invalid_credentials_rejected():
+def test_auth_invalid_credentials_rejected(registered_users):
     """Verifies that logging in with incorrect password returns 401 Unauthorized."""
     res = client.post(
         "/api/v1/auth/login",

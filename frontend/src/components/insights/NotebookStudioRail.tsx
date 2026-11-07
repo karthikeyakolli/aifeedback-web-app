@@ -598,7 +598,7 @@ export const NotebookStudioRail: React.FC<NotebookStudioRailProps> = ({
           /* TAB: NotebookLM-style Audio Briefing (Dual-Host Podcast) */
           <div className="space-y-4">
             {/* Player Card */}
-            <div className="p-4 rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/5 via-transparent to-purple-500/5 space-y-3">
+            <div className="p-4 rounded-2xl border border-[var(--border-default)] bg-[var(--surface-raised)] space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">

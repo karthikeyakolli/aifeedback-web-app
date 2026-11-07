@@ -93,6 +93,8 @@ export const NotificationBell: React.FC = () => {
         return <CornerDownRight className="w-3.5 h-3.5 text-indigo-500" />;
       case 'comment':
         return <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />;
+      case 'project_review':
+        return <MessageSquare className="w-3.5 h-3.5 text-cyan-500" />;
       case 'ai_ready':
         return <Sparkles className="w-3.5 h-3.5 text-amber-500" />;
       case 'moderation':

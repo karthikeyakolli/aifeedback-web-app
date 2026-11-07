@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, AliasChoices, ConfigDict, computed_field
 
 
-ProjectStatus = Literal['draft', 'ready', 'in_review', 'reviewed', 'archived']
+ProjectStatus = Literal['draft', 'ready', 'in_review', 'reviewed', 'archived', 'published']
 ProjectCategory = Literal[
     'developer-tools',
     'productivity',
@@ -14,7 +14,10 @@ ProjectCategory = Literal[
     'design-ux',
     'saas-b2b',
     'mobile',
-    'infrastructure'
+    'infrastructure',
+    'education',
+    'entertainment',
+    'other'
 ]
 FindingSeverity = Literal['blocker', 'high', 'medium', 'low']
 FindingCategory = Literal['ux', 'performance', 'security', 'bug', 'architecture', 'accessibility']
@@ -131,8 +134,37 @@ class PublicProjectRead(BaseModel):
     reviews_count: int = Field(0, validation_alias=AliasChoices("reviewsCount", "reviews_count"), serialization_alias="reviewsCount")
     creator_username: Optional[str] = Field(None, validation_alias=AliasChoices("creatorUsername", "creator_username"), serialization_alias="creatorUsername")
     creator_display_name: Optional[str] = Field(None, validation_alias=AliasChoices("creatorDisplayName", "creator_display_name"), serialization_alias="creatorDisplayName")
+    creator_avatar_url: Optional[str] = Field(None, validation_alias=AliasChoices("creatorAvatarUrl", "creator_avatar_url"), serialization_alias="creatorAvatarUrl")
     created_at: Union[datetime, str] = Field(..., validation_alias=AliasChoices("createdAt", "created_at"), serialization_alias="createdAt")
     updated_at: Union[datetime, str] = Field(..., validation_alias=AliasChoices("updatedAt", "updated_at"), serialization_alias="updatedAt")
+
+
+class ProjectApkReleaseRead(BaseModel):
+    """Schema for Android APK release distribution."""
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+    id: str
+    project_id: str = Field(..., validation_alias=AliasChoices("projectId", "project_id"), serialization_alias="projectId")
+    user_id: str = Field(..., validation_alias=AliasChoices("userId", "user_id"), serialization_alias="userId")
+    version_name: str = Field(..., validation_alias=AliasChoices("versionName", "version_name"), serialization_alias="versionName")
+    version_code: int = Field(..., validation_alias=AliasChoices("versionCode", "version_code"), serialization_alias="versionCode")
+    release_notes: str = Field("", validation_alias=AliasChoices("releaseNotes", "release_notes"), serialization_alias="releaseNotes")
+    file_name: str = Field(..., validation_alias=AliasChoices("fileName", "file_name"), serialization_alias="fileName")
+    file_size_bytes: int = Field(..., validation_alias=AliasChoices("fileSizeBytes", "file_size_bytes"), serialization_alias="fileSizeBytes")
+    file_sha256: str = Field(..., validation_alias=AliasChoices("fileSha256", "file_sha256"), serialization_alias="fileSha256")
+    package_name: Optional[str] = Field("", validation_alias=AliasChoices("packageName", "package_name"), serialization_alias="packageName")
+    min_sdk_version: Optional[int] = Field(21, validation_alias=AliasChoices("minSdkVersion", "min_sdk_version"), serialization_alias="minSdkVersion")
+    target_sdk_version: Optional[int] = Field(34, validation_alias=AliasChoices("targetSdkVersion", "target_sdk_version"), serialization_alias="targetSdkVersion")
+    status: str
+    quarantine_reason: Optional[str] = Field(None, validation_alias=AliasChoices("quarantineReason", "quarantine_reason"), serialization_alias="quarantineReason")
+    download_count: int = Field(0, validation_alias=AliasChoices("downloadCount", "download_count"), serialization_alias="downloadCount")
+    created_at: Union[datetime, str] = Field(..., validation_alias=AliasChoices("createdAt", "created_at"), serialization_alias="createdAt")
+    updated_at: Union[datetime, str] = Field(..., validation_alias=AliasChoices("updatedAt", "updated_at"), serialization_alias="updatedAt")
+
+
+class ProjectApkStatusUpdate(BaseModel):
+    """Schema for updating APK release status (e.g. published, revoked)."""
+    status: str = Field(..., description="Target status: published, revoked, quarantined")
 
 
 class PublicUpvoteResponse(BaseModel):
@@ -385,5 +417,30 @@ class FindingActionRequest(BaseModel):
 
 class TaskStatusUpdateRequest(BaseModel):
     status: str = Field(...)  # todo, in_progress, completed
+
+
+class ProjectChangelogCreateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    version_tag: str = Field("v1.0.0", validation_alias=AliasChoices("versionTag", "version_tag"))
+    title: str = Field(..., min_length=2, max_length=200)
+    description: str = Field(..., min_length=5)
+    finding_id: Optional[str] = Field(None, validation_alias=AliasChoices("findingId", "finding_id"))
+    is_public: bool = Field(True, validation_alias=AliasChoices("isPublic", "is_public"))
+
+
+class ProjectChangelogRead(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    id: str
+    projectId: str = Field(..., validation_alias=AliasChoices("projectId", "project_id"))
+    userId: str = Field(..., validation_alias=AliasChoices("userId", "user_id"))
+    versionTag: str = Field(..., validation_alias=AliasChoices("versionTag", "version_tag"))
+    title: str
+    description: str
+    findingId: Optional[str] = Field(None, validation_alias=AliasChoices("findingId", "finding_id"))
+    findingTitle: Optional[str] = Field(None, validation_alias=AliasChoices("findingTitle", "finding_title"))
+    findingSeverity: Optional[str] = Field(None, validation_alias=AliasChoices("findingSeverity", "finding_severity"))
+    isPublic: bool = Field(True, validation_alias=AliasChoices("isPublic", "is_public"))
+    createdAt: str = Field(..., validation_alias=AliasChoices("createdAt", "created_at"))
+    updatedAt: str = Field(..., validation_alias=AliasChoices("updatedAt", "updated_at"))
 
 

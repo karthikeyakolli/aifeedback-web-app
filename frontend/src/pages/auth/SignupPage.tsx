@@ -81,11 +81,11 @@ export const SignupPage: React.FC = () => {
             {/* Brand Header */}
             <div className="flex items-center justify-between mb-6">
               <Link to="/" className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-xs">
+                <div className="w-9 h-9 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white shadow-xs">
                   <Sparkles className="w-5 h-5" />
                 </div>
-                <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-white">
-                  ResearchIntel
+                <span className="font-extrabold text-base tracking-tight text-[var(--text-primary)]">
+                  FeedbackAI
                 </span>
               </Link>
 
@@ -93,16 +93,16 @@ export const SignupPage: React.FC = () => {
                 to="/login"
                 className="text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
-                <span className="hidden sm:inline">Already registered? </span><span className="text-indigo-600 dark:text-indigo-400">Sign in</span>
+                <span className="hidden sm:inline">Already registered? </span><span className="text-[var(--accent)] font-bold">Sign in</span>
               </Link>
             </div>
 
             <div className="space-y-1 mb-6">
-              <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+              <h1 className="text-2xl font-extrabold tracking-tight text-[var(--text-primary)]">
                 Create your account
               </h1>
               <p className="text-xs text-[var(--text-muted)]">
-                Join founders and reviewers extracting actionable evidence from authentic community discussion.
+                Join creators and community members sharing authentic feedback on products.
               </p>
             </div>
 

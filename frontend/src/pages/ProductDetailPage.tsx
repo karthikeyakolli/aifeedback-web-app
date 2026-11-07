@@ -110,7 +110,7 @@ export const ProductDetailPage: React.FC = () => {
       <div className="neomorph-card p-6 sm:p-8">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6">
           <div className="flex items-start gap-4">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-extrabold text-2xl sm:text-3xl shadow-sm shrink-0">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-blue-50 text-[var(--accent)] border border-blue-200/70 flex items-center justify-center font-extrabold text-2xl sm:text-3xl shadow-xs shrink-0">
               {product.name.charAt(0).toUpperCase()}
             </div>
 
@@ -136,7 +136,7 @@ export const ProductDetailPage: React.FC = () => {
                     {post.isAnonymous ? 'Anonymous Creator' : post.author.displayName}
                   </strong>
                   {!post.isAnonymous && post.author.reputationScore !== undefined && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold border border-indigo-200 dark:border-indigo-800">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-[var(--accent)] font-semibold border border-indigo-200">
                       ★ {post.author.reputationScore}
                     </span>
                   )}
@@ -182,9 +182,9 @@ export const ProductDetailPage: React.FC = () => {
 
         {/* Creator-Only AI Research Studio Banner (Social Translucence & Private Boundary) */}
         {isOwner && (
-          <div className="mt-6 pt-6 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-50/80 via-purple-50/40 to-transparent dark:from-indigo-950/30 dark:via-purple-950/20 dark:to-transparent border border-indigo-200/80 dark:border-indigo-900/60">
+          <div className="mt-6 pt-6 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-blue-50/60 border border-blue-200">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-indigo-600 text-white shrink-0 mt-0.5">
+              <div className="p-2 rounded-lg bg-[var(--accent)] text-white shrink-0 mt-0.5">
                 <Sparkles className="w-4 h-4 text-amber-300" />
               </div>
               <div>
@@ -192,7 +192,7 @@ export const ProductDetailPage: React.FC = () => {
                   <h2 className="font-bold text-xs sm:text-sm text-[var(--text-primary)]">
                     Creator Personal Workspace
                   </h2>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/70 text-indigo-700 dark:text-indigo-300 font-semibold uppercase tracking-wider">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-[var(--accent)] font-semibold uppercase tracking-wider">
                     Owner Only
                   </span>
                 </div>
@@ -248,7 +248,7 @@ export const ProductDetailPage: React.FC = () => {
             <ShieldCheck className="w-4 h-4 text-amber-500" />
             <span>Review Status</span>
           </div>
-          <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-2">
+          <div className="text-xs font-bold text-emerald-600 mt-2">
             Active Review
           </div>
         </div>
@@ -334,7 +334,7 @@ export const ProductDetailPage: React.FC = () => {
                     <p className="text-[var(--text-primary)]/90 leading-relaxed line-clamp-3">
                       "{comment.content}"
                     </p>
-                    <div className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                    <div className="flex items-center gap-1 text-[11px] font-semibold text-[var(--accent)]">
                       <ChevronUp className="w-3.5 h-3.5" />
                       <span>{comment.upvotesCount} upvotes</span>
                     </div>
@@ -343,7 +343,7 @@ export const ProductDetailPage: React.FC = () => {
 
                 <Link
                   to={`/posts/${post.id}`}
-                  className="block text-center text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-1"
+                  className="block text-center text-xs font-semibold text-[var(--accent)] hover:underline pt-1"
                 >
                   View full conversation thread →
                 </Link>
@@ -366,7 +366,7 @@ export const ProductDetailPage: React.FC = () => {
               <ShieldCheck className="w-4 h-4 text-indigo-500" /> Candid Community Feedback
             </div>
             <p className="leading-relaxed">
-              Reviews on ResearchIntel are governed by community guidelines. Constructive critique is welcomed; spam and abusive conduct are moderated.
+              Reviews on FeedbackAI are governed by community guidelines. Constructive critique is welcomed; spam and abusive conduct are moderated.
             </p>
           </div>
         </div>

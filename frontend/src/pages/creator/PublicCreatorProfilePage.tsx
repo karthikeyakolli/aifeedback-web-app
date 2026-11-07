@@ -88,7 +88,7 @@ export const PublicCreatorProfilePage: React.FC = () => {
       <div className="p-6 sm:p-8 rounded-2xl border border-[var(--border-default)] bg-[var(--surface)] shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-5">
           <div className="flex items-start gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-sky-600 flex items-center justify-center text-white font-black text-2xl shadow-xs shrink-0">
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 text-[var(--accent)] border border-blue-200/70 flex items-center justify-center font-black text-2xl shadow-xs shrink-0">
               {creator.displayName.charAt(0).toUpperCase()}
             </div>
             <div className="space-y-1">

@@ -287,3 +287,50 @@ def clean_evidence_quote(text: Optional[str]) -> str:
 
     return s.strip()
 
+
+# Spam, Scam, and Moderation Token Lists
+DISALLOWED_SPAM_PATTERNS = [
+    re.compile(r"(?:t\.me/|telegram\.me/|wa\.me/|whatsapp\.com/chat/)", re.IGNORECASE),
+    re.compile(r"\b(?:crypto\s*airdrop|free\s*crypto|guaranteed\s*100x|pump\s*and\s*dump|buy\s*followers)\b", re.IGNORECASE),
+    re.compile(r"\b(?:cialis|viagra|casino\s*online|slot\s*gacor)\b", re.IGNORECASE),
+]
+
+TOXIC_TOKENS = [
+    "kys", "kill yourself", "die in a hole",
+]
+
+
+def audit_and_moderate_content(text: str) -> tuple[bool, Optional[str], str]:
+    """Inspects user reviews and community comments for spam and toxicity.
+    
+    Returns:
+        (is_allowed, rejection_reason, sentiment_category)
+    """
+    clean_t = (text or "").strip()
+    if len(clean_t) < 2:
+        return False, "Comment is too short.", "neutral"
+
+    # 1. Check spam patterns
+    for p in DISALLOWED_SPAM_PATTERNS:
+        if p.search(clean_t):
+            return False, "Comment contains prohibited promotional spam links or phrases.", "spam"
+
+    # 2. Check toxic harassment phrases
+    lower = clean_t.lower()
+    for tok in TOXIC_TOKENS:
+        if tok in lower:
+            return False, "Comment violates our community code of conduct regarding abusive language.", "toxic"
+
+    # 3. Detect tone / sentiment category
+    if any(w in lower for w in ("bug", "crash", "fails", "broken", "error", "defect", "freeze", "infinite loop")):
+        sentiment = "bug_report"
+    elif any(w in lower for w in ("would love", "feature request", "please add", "suggestion", "could we have", "recommend adding")):
+        sentiment = "feature_request"
+    elif any(w in lower for w in ("great", "awesome", "impressive", "love this", "excellent", "clean", "superb")):
+        sentiment = "praise"
+    else:
+        sentiment = "constructive"
+
+    return True, None, sentiment
+
+

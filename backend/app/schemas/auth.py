@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, Any
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class UserRegisterRequest(BaseModel):
@@ -14,7 +14,25 @@ class UserRegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=30, description="Unique username")
     display_name: str = Field(..., min_length=2, max_length=50, description="Public display name")
     bio: Optional[str] = Field("", max_length=300)
-    avatar_url: Optional[str] = None
+    avatar_url: Optional[str] = Field(None)
+
+    model_config = {
+        "populate_by_name": True,
+        "extra": "ignore",
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_aliases(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # Accept displayName or name or display_name
+            if "displayName" in data and "display_name" not in data:
+                data["display_name"] = data["displayName"]
+            elif "name" in data and "display_name" not in data:
+                data["display_name"] = data["name"]
+            if "avatarUrl" in data and "avatar_url" not in data:
+                data["avatar_url"] = data["avatarUrl"]
+        return data
 
 
 class UserLoginRequest(BaseModel):

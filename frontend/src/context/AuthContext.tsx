@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import type { UserProfile } from '../types';
 import { api, getStoredToken, setStoredToken, clearStoredToken } from '../services/api';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
-import { mockCurrentUser } from '../fixtures/mockData';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -21,7 +20,6 @@ interface AuthContextType {
     displayName: string;
     bio?: string;
   }) => Promise<void>;
-  loginAsDemoUser: () => Promise<void>;
   quickLoginDev?: (accountType: 'creator' | 'visitor' | 'moderator') => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -46,8 +44,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Restore authenticated session from persistent token or Supabase session on load
   useEffect(() => {
-    if (isSupabaseConfigured() && supabase) {
-      // 1. Check existing Supabase session
+    // 1. Check local persistent token
+    const localToken = getStoredToken();
+    if (localToken) {
+      api.getCurrentUser()
+        .then((u) => {
+          setUser(u);
+          setIsLoading(false);
+        })
+        .catch(() => {
+          clearStoredToken();
+          setUser(null);
+          setIsLoading(false);
+        });
+    } else if (isSupabaseConfigured() && supabase) {
+      // 2. If no local token, check Supabase session if configured
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
           setStoredToken(session.access_token);
@@ -56,85 +67,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .catch(() => setUser(null))
             .finally(() => setIsLoading(false));
         } else {
-          // Fallback to local stored token if available
-          const localToken = getStoredToken();
-          if (localToken) {
-            api.getCurrentUser()
-              .then(setUser)
-              .catch(() => {
-                clearStoredToken();
-                setUser(null);
-              })
-              .finally(() => setIsLoading(false));
-          } else {
-            setIsLoading(false);
-          }
+          setIsLoading(false);
         }
-      });
+      }).catch(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
+    }
 
-      // 2. Listen to Supabase Auth state changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session) {
-          setStoredToken(session.access_token);
-          try {
-            const u = await api.getCurrentUser();
-            setUser(u);
-          } catch {
-            setUser(null);
+    // 3. Supabase Auth state change listener (Handles auto-refresh, token rotation, and multi-tab signout)
+    let authSubscription: any = null;
+    if (isSupabaseConfigured() && supabase) {
+      const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+          if (session?.access_token) {
+            setStoredToken(session.access_token);
+            try {
+              const u = await api.getCurrentUser();
+              setUser(u);
+            } catch {
+              // ignore
+            }
           }
-        } else if (_event === 'SIGNED_OUT') {
+        } else if (event === 'SIGNED_OUT') {
           clearStoredToken();
           setUser(null);
         }
       });
-
-      return () => {
-        subscription.unsubscribe();
-      };
-    } else {
-      // Local dev mode session restore
-      const token = getStoredToken();
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-
-      api.getCurrentUser()
-        .then((u) => setUser(u))
-        .catch(() => {
-          // Token expired or invalid
-          setUser(null);
-        })
-        .finally(() => setIsLoading(false));
+      authSubscription = data?.subscription;
     }
+
+    return () => {
+      authSubscription?.unsubscribe?.();
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<void> => {
     setIsLoading(true);
     try {
-      if (isSupabaseConfigured() && supabase) {
-        try {
-          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) throw error;
-          if (data.session) {
-            setStoredToken(data.session.access_token);
-            const u = await api.getCurrentUser();
-            setUser(u);
-            closeAuthModal();
-            return;
-          }
-        } catch {
-          // Fallback to local FastAPI backend auth if Supabase credentials fail
-          const res = await api.login({ email, password });
-          setUser(res.user);
-          closeAuthModal();
-          return;
-        }
-      } else {
+      // 1. Primary: Direct API authentication against database (instant, reliable, 100% free)
+      try {
         const res = await api.login({ email, password });
         setUser(res.user);
+        closeAuthModal();
+        return;
+      } catch (localErr: any) {
+        // 2. Fallback to Supabase if configured and local user not found
+        if (isSupabaseConfigured() && supabase) {
+          try {
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            if (!error && data.session) {
+              setStoredToken(data.session.access_token);
+              const u = await api.getCurrentUser();
+              setUser(u);
+              closeAuthModal();
+              return;
+            }
+          } catch {
+            // ignore and bubble original error
+          }
+        }
+        throw localErr;
       }
-      closeAuthModal();
     } finally {
       setIsLoading(false);
     }
@@ -149,76 +142,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }): Promise<void> => {
     setIsLoading(true);
     try {
-      if (isSupabaseConfigured() && supabase) {
-        const { data: authData, error } = await supabase.auth.signUp({
-          email: data.email,
-          password: data.password,
-          options: {
-            data: {
-              username: data.username,
-              display_name: data.displayName,
-            },
-          },
-        });
-        if (error) throw new Error(error.message);
-        if (authData.session) {
-          setStoredToken(authData.session.access_token);
-          const u = await api.getCurrentUser();
-          setUser(u);
-        }
-      } else {
-        const res = await api.signup(data);
-        setUser(res.user);
-      }
-      closeAuthModal();
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loginAsDemoUser = async (): Promise<void> => {
-    setIsLoading(true);
-    try {
-      if (isSupabaseConfigured() && supabase) {
-        // Attempt Supabase login with demo credentials
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: 'sarah.chen@example.com',
-          password: 'demo-password-123',
-        });
-        if (!error && data.session) {
-          setStoredToken(data.session.access_token);
-          const u = await api.getCurrentUser();
-          setUser(u);
-          closeAuthModal();
-          return;
-        }
-      }
-
-      // First attempt logging in with demo credentials locally
-      const res = await api.login({
-        email: 'sarah.chen@example.com',
-        password: 'demo-password-123',
-      });
+      // 1. Direct registration against database (creates profile, hashes password, returns JWT immediately)
+      const res = await api.signup(data);
       setUser(res.user);
       closeAuthModal();
-    } catch {
-      // If fresh database, sign up Sarah Chen
-      try {
-        const res = await api.signup({
-          email: 'sarah.chen@example.com',
-          password: 'demo-password-123',
-          username: 'sarahc',
-          displayName: 'Sarah Chen',
-          bio: 'Building developer tools & exploring customer research workflows.',
-        });
-        setUser(res.user);
-        closeAuthModal();
-      } catch (e: any) {
-        console.warn('Demo login network unavailable; using static demo profile:', e);
-        setUser(mockCurrentUser);
-        setStoredToken('demo_token_' + mockCurrentUser.id);
-        closeAuthModal();
+    } catch (err: any) {
+      // 2. Check if Supabase fallback is viable
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          const { data: authData, error } = await supabase.auth.signUp({
+            email: data.email,
+            password: data.password,
+            options: {
+              data: {
+                username: data.username,
+                display_name: data.displayName,
+              },
+            },
+          });
+          if (!error && authData.session) {
+            setStoredToken(authData.session.access_token);
+            const u = await api.getCurrentUser();
+            setUser(u);
+            closeAuthModal();
+            return;
+          }
+        } catch {
+          // ignore
+        }
       }
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -267,7 +220,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         closeAuthModal,
         login,
         signup,
-        loginAsDemoUser,
         quickLoginDev,
         logout,
       }}
