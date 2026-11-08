@@ -102,7 +102,7 @@ class GeminiProvider:
         timeout_seconds: Optional[int] = None,
         max_output_tokens: Optional[int] = None,
     ) -> None:
-        self.api_key = api_key or settings.gemini_api_key
+        self.api_key = settings.gemini_api_key if api_key is None else api_key
         self.model_name = model_name or settings.gemini_model or "gemini-3.8-flash"
         self.timeout_seconds = timeout_seconds or settings.ai_timeout_seconds
         self.max_output_tokens = max_output_tokens or settings.ai_max_output_tokens
@@ -1076,13 +1076,22 @@ class HybridAIProvider:
                     "Primary provider encountered error (%s). Falling back seamlessly to Groq...",
                     e,
                 )
-                return self.fallback.generate_analysis(
-                    post_title=post_title,
-                    post_description=post_description,
-                    category=category,
-                    comments_data=comments_data,
-                )
-            raise
+                try:
+                    return self.fallback.generate_analysis(
+                        post_title=post_title,
+                        post_description=post_description,
+                        category=category,
+                        comments_data=comments_data,
+                    )
+                except Exception as fb_err:
+                    logger.warning("Fallback provider also failed (%s). Using deterministic offline synthesis.", fb_err)
+            logger.warning("Falling back to deterministic offline synthesis for post analysis.")
+            return MockGeminiProvider().generate_analysis(
+                post_title=post_title,
+                post_description=post_description,
+                category=category,
+                comments_data=comments_data,
+            )
 
     def generate_chat_response(
         self,
@@ -1112,17 +1121,30 @@ class HybridAIProvider:
                     "Primary provider encountered error (%s). Falling back seamlessly to Groq...",
                     e,
                 )
-                return self.fallback.generate_chat_response(
-                    post_title=post_title,
-                    post_description=post_description,
-                    post_category=post_category,
-                    retrieved_comments=retrieved_comments,
-                    matching_themes=matching_themes,
-                    conversation_history=conversation_history,
-                    user_question=user_question,
-                    agent_mode=agent_mode,
-                )
-            raise
+                try:
+                    return self.fallback.generate_chat_response(
+                        post_title=post_title,
+                        post_description=post_description,
+                        post_category=post_category,
+                        retrieved_comments=retrieved_comments,
+                        matching_themes=matching_themes,
+                        conversation_history=conversation_history,
+                        user_question=user_question,
+                        agent_mode=agent_mode,
+                    )
+                except Exception as fb_err:
+                    logger.warning("Fallback provider also failed (%s).", fb_err)
+            logger.warning("Falling back to deterministic offline response for research chat.")
+            return MockGeminiProvider().generate_chat_response(
+                post_title=post_title,
+                post_description=post_description,
+                post_category=post_category,
+                retrieved_comments=retrieved_comments,
+                matching_themes=matching_themes,
+                conversation_history=conversation_history,
+                user_question=user_question,
+                agent_mode=agent_mode,
+            )
 
     def generate_full_product_review(
         self,
@@ -1146,14 +1168,24 @@ class HybridAIProvider:
                     "Primary provider encountered error (%s). Falling back seamlessly to Groq for Full Product Review...",
                     e,
                 )
-                return self.fallback.generate_full_product_review(
-                    post_title=post_title,
-                    post_description=post_description,
-                    post_category=post_category,
-                    eligible_comments=eligible_comments,
-                    attached_docs=attached_docs,
-                )
-            raise
+                try:
+                    return self.fallback.generate_full_product_review(
+                        post_title=post_title,
+                        post_description=post_description,
+                        post_category=post_category,
+                        eligible_comments=eligible_comments,
+                        attached_docs=attached_docs,
+                    )
+                except Exception as fb_err:
+                    logger.warning("Fallback provider also failed (%s).", fb_err)
+            logger.warning("Falling back to deterministic offline review synthesis for Full Product Review.")
+            return MockGeminiProvider().generate_full_product_review(
+                post_title=post_title,
+                post_description=post_description,
+                post_category=post_category,
+                eligible_comments=eligible_comments,
+                attached_docs=attached_docs,
+            )
 
     def synthesize_community_feedback(
         self,

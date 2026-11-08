@@ -788,6 +788,7 @@ export interface AIReviewStatus {
 export interface AIReviewStartPayload {
   focus_areas?: string[];
   model_override?: string;
+  sync?: boolean;
 }
 
 export interface FindingComparisonItem {

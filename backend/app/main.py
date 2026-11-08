@@ -34,6 +34,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.review_worker_enabled:
         review_worker.start()
 
+    # Ensure baseline community posts and demo data if database is fresh
+    try:
+        from backend.app.db.connection import db_manager
+        with db_manager.session() as conn:
+            cnt = conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
+            if cnt == 0:
+                logger.info("Fresh database detected. Seeding baseline community showcase data...")
+                from scripts.seed_demo_community_data import seed_demo_data
+                seed_demo_data()
+    except Exception as e:
+        logger.warning("Could not auto-seed baseline data: %s", e)
+
     yield
 
     if settings.review_worker_enabled:

@@ -524,6 +524,9 @@ export const PostDetailPage: React.FC = () => {
           postAuthorId={post.author.id}
           initialAnalysis={aiAnalysis}
           onJumpToComment={handleJumpToComment}
+          onAnalysisUpdated={() => {
+            api.getAiAnalysis(post.id).then(setAiAnalysis).catch(() => {});
+          }}
         />
       ) : (
         <section aria-label="Discussion Thread" className="space-y-6">

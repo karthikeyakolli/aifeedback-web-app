@@ -222,6 +222,7 @@ export const ProjectReviewTab: React.FC<ProjectReviewTabProps> = ({
     try {
       const reviewStatus = await api.startAIReview(project.id, {
         focus_areas: selectedFocusAreas,
+        sync: false,
       });
 
       setActiveReview(reviewStatus);
@@ -238,6 +239,22 @@ export const ProjectReviewTab: React.FC<ProjectReviewTabProps> = ({
         setErrorMessage(reviewStatus.errorMessage || 'AI review run encountered an error.');
       }
     } catch (err: any) {
+      // Resilient recovery: check if review was queued or completed on the server despite client network issue
+      try {
+        const latestReviews = await api.getProjectReviews(project.id);
+        const running = latestReviews.find((r) => r.status === 'queued' || r.status === 'processing');
+        if (running) {
+          setActiveReview(running);
+          return;
+        }
+        const reports = await api.getProjectReports(project.id);
+        if (reports.length > 0) {
+          setAllReports(reports);
+          setReport(reports[0]);
+          setSelectedReportId(reports[0].id);
+          return;
+        }
+      } catch {}
       setErrorMessage(err.message || 'Failed to trigger AI review.');
     } finally {
       setIsStartingReview(false);

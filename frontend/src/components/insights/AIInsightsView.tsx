@@ -35,6 +35,7 @@ interface AIInsightsViewProps {
   postAuthorId?: string;
   initialAnalysis?: any;
   onJumpToComment?: (commentId: string) => void;
+  onAnalysisUpdated?: () => void;
 }
 
 type AgentMode = 'analytical' | 'professional' | 'visual' | 'explorer';
@@ -54,6 +55,7 @@ export const AIInsightsView: React.FC<AIInsightsViewProps> = ({
   postId,
   postAuthorId,
   onJumpToComment,
+  onAnalysisUpdated,
 }) => {
   const { user, isAuthenticated } = useAuth();
   const isOwner = isAuthenticated && user && postAuthorId && user.id === postAuthorId;
@@ -238,9 +240,33 @@ export const AIInsightsView: React.FC<AIInsightsViewProps> = ({
 
       // Open studio panel if collapsed
       setIsStudioCollapsed(false);
+
+      if (onAnalysisUpdated) {
+        onAnalysisUpdated();
+      }
     } catch (err: any) {
       clearInterval(interval);
-      setGenerationError(err.message || 'Review generation failed. Please try again.');
+      // Resilient recovery: poll api.listProductReviews up to 4 times to check if server completed generation
+      let recovered = false;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        try {
+          const latestReviews = await api.listProductReviews(postId);
+          if (latestReviews.length > reviewsList.length) {
+            setReviewsList(latestReviews);
+            setSelectedReview(latestReviews[latestReviews.length - 1]);
+            const updatedSources = await api.getReviewSources(postId);
+            setSourceAvailability(updatedSources);
+            setIsStudioCollapsed(false);
+            if (onAnalysisUpdated) onAnalysisUpdated();
+            recovered = true;
+            break;
+          }
+        } catch {}
+      }
+      if (!recovered) {
+        setGenerationError(err.message || 'Review generation failed. Please try again.');
+      }
     } finally {
       setIsGenerating(false);
     }
