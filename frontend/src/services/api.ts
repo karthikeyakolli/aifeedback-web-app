@@ -148,6 +148,19 @@ export const api = {
     return authData;
   },
 
+  async confirmEmail(email: string): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/auth/confirm-email`, {
+      method: 'POST',
+      headers: getHeaders(false),
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Verification failed' }));
+      throw new Error(err.detail || 'Verification failed');
+    }
+    return res.json();
+  },
+
   async getCurrentUser(): Promise<UserProfile> {
     const token = getStoredToken();
     if (!token) {

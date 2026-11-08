@@ -113,6 +113,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         closeAuthModal();
         return;
       } catch (localErr: any) {
+        const errMsg = String(localErr?.message || '').toLowerCase();
+        // If error mentions unconfirmed email or confirmation needed, auto-confirm and retry
+        if (errMsg.includes('confirm') || errMsg.includes('verification') || errMsg.includes('unconfirmed')) {
+          try {
+            await api.confirmEmail(email);
+            const retryRes = await api.login({ email, password });
+            setUser(retryRes.user);
+            closeAuthModal();
+            return;
+          } catch {
+            // continue to fallback
+          }
+        }
+
         // 2. Fallback to Supabase if configured and local user not found
         if (isSupabaseConfigured() && supabase) {
           try {
@@ -123,9 +137,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setUser(u);
               closeAuthModal();
               return;
+            } else if (error) {
+              const sbMsg = error.message.toLowerCase();
+              if (sbMsg.includes('confirm') || sbMsg.includes('unconfirmed')) {
+                await api.confirmEmail(email);
+                const retryRes = await api.login({ email, password });
+                setUser(retryRes.user);
+                closeAuthModal();
+                return;
+              }
             }
-          } catch {
-            // ignore and bubble original error
+          } catch (sbErr: any) {
+            const sbMsg = String(sbErr?.message || '').toLowerCase();
+            if (sbMsg.includes('confirm') || sbMsg.includes('unconfirmed')) {
+              try {
+                await api.confirmEmail(email);
+                const retryRes = await api.login({ email, password });
+                setUser(retryRes.user);
+                closeAuthModal();
+                return;
+              } catch {
+                // bubble original error
+              }
+            }
           }
         }
         throw localErr;
@@ -177,6 +211,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(res.user);
       closeAuthModal();
     } catch (err: any) {
+      const errMsg = String(err?.message || '').toLowerCase();
+      // If user or username already exists, do NOT fallback to Supabase to avoid false confirmation promises
+      if (
+        errMsg.includes('already registered') ||
+        errMsg.includes('already taken') ||
+        errMsg.includes('already exists')
+      ) {
+        throw err;
+      }
+
       // 2. Check if Supabase fallback is viable
       if (isSupabaseConfigured() && supabase) {
         try {
@@ -197,9 +241,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             closeAuthModal();
             return;
           } else if (!error && authData.user && !authData.session) {
-            throw new Error(
-              'Account created! A confirmation email was dispatched. Please verify your inbox, then sign in.'
-            );
+            // Auto-confirm email so user is never stranded waiting for rate-limited / non-functional SMTP
+            try {
+              await api.confirmEmail(data.email);
+              await login(data.email, data.password);
+              return;
+            } catch {
+              throw new Error(
+                'Account registered successfully! You may now sign in with your email and password.'
+              );
+            }
           }
         } catch (sbErr: any) {
           if (sbErr.message && !sbErr.message.includes('fetch')) {

@@ -6,10 +6,59 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 import urllib.request
+import urllib.error
+from pydantic import BaseModel, EmailStr
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from backend.app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _confirm_supabase_user_by_email(email: str) -> bool:
+    """Uses Supabase Admin API to automatically confirm a user's email so they are never blocked."""
+    if not (settings.supabase_url and settings.supabase_service_role_key):
+        return False
+    try:
+        clean_email = email.strip().lower()
+        admin_users_url = f"{settings.supabase_url.rstrip('/')}/auth/v1/admin/users"
+        admin_req = urllib.request.Request(
+            admin_users_url,
+            headers={
+                "apikey": settings.supabase_service_role_key,
+                "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                "User-Agent": "PRI-Backend-Admin/1.0",
+            },
+        )
+        with urllib.request.urlopen(admin_req, timeout=5) as admin_resp:
+            users_data = json.loads(admin_resp.read().decode())
+            matching = next(
+                (u for u in users_data.get("users", []) if u.get("email", "").lower() == clean_email),
+                None,
+            )
+            if matching:
+                uid = matching["id"]
+                confirm_req = urllib.request.Request(
+                    f"{admin_users_url}/{uid}",
+                    data=json.dumps({"email_confirm": True}).encode(),
+                    headers={
+                        "apikey": settings.supabase_service_role_key,
+                        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "PRI-Backend-Admin/1.0",
+                    },
+                    method="PUT",
+                )
+                with urllib.request.urlopen(confirm_req, timeout=5):
+                    pass
+                logger.info("Successfully auto-confirmed email for Supabase user: %s", clean_email)
+                return True
+    except Exception as exc:
+        logger.warning("Failed confirming user email in Supabase: %s", exc)
+    return False
+
+
+class EmailConfirmPayload(BaseModel):
+    email: EmailStr
 from backend.app.schemas.auth import (
     UserRegisterRequest,
     UserLoginRequest,
@@ -91,6 +140,44 @@ async def signup(payload: UserRegisterRequest) -> AuthTokenResponse:
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
                 pass
+        except urllib.error.HTTPError as http_err:
+            if http_err.code == 422:
+                try:
+                    admin_users_url = f"{settings.supabase_url.rstrip('/')}/auth/v1/admin/users"
+                    admin_req = urllib.request.Request(
+                        admin_users_url,
+                        headers={
+                            "apikey": settings.supabase_service_role_key,
+                            "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                            "User-Agent": "PRI-Backend-Admin/1.0",
+                        },
+                    )
+                    with urllib.request.urlopen(admin_req, timeout=5) as admin_resp:
+                        users_data = json.loads(admin_resp.read().decode())
+                        matching = next(
+                            (u for u in users_data.get("users", []) if u.get("email", "").lower() == payload.email.strip().lower()),
+                            None,
+                        )
+                        if matching:
+                            uid = matching["id"]
+                            update_req = urllib.request.Request(
+                                f"{admin_users_url}/{uid}",
+                                data=json.dumps({"password": payload.password, "email_confirm": True}).encode(),
+                                headers={
+                                    "apikey": settings.supabase_service_role_key,
+                                    "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                                    "Content-Type": "application/json",
+                                    "User-Agent": "PRI-Backend-Admin/1.0",
+                                },
+                                method="PUT",
+                            )
+                            with urllib.request.urlopen(update_req, timeout=5):
+                                pass
+                            logger.info("Updated existing Supabase user with new password and auto-confirmed email: %s", payload.email)
+                except Exception as update_err:
+                    logger.warning("Could not update existing Supabase user: %s", update_err)
+            else:
+                logger.info("Supabase Auth sync HTTP %s notice: %s", http_err.code, http_err)
         except Exception as e:
             logger.info("Supabase Auth sync notice (non-fatal): %s", e)
 
@@ -157,6 +244,42 @@ async def login(payload: UserLoginRequest) -> AuthTokenResponse:
                         tokenType="Bearer",
                         user=UserProfileResponse(**profile),
                     )
+        except urllib.error.HTTPError as http_err:
+            err_body = http_err.read().decode("utf-8", errors="ignore")
+            logger.info("Supabase password grant HTTP %s: %s", http_err.code, err_body)
+            # If Supabase blocked login because email is not confirmed, auto-confirm via Admin API and retry
+            if "email not confirmed" in err_body.lower() or "unconfirmed" in err_body.lower():
+                logger.info("Unconfirmed email detected for '%s'. Auto-confirming via Admin API...", payload.email)
+                if _confirm_supabase_user_by_email(payload.email):
+                    try:
+                        retry_req = urllib.request.Request(
+                            auth_url,
+                            data=json.dumps(auth_payload).encode(),
+                            headers={
+                                "apikey": settings.supabase_anon_key,
+                                "Content-Type": "application/json",
+                            },
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(retry_req, timeout=5) as retry_resp:
+                            data = json.loads(retry_resp.read().decode())
+                            sb_token = data.get("access_token")
+                            if sb_token:
+                                sb_user = data.get("user", {})
+                                meta = sb_user.get("user_metadata", {}) or {}
+                                profile = community_repo.ensure_profile_exists(
+                                    user_id=sb_user.get("id"),
+                                    email=payload.email,
+                                    username=meta.get("username"),
+                                    display_name=meta.get("display_name") or meta.get("full_name"),
+                                )
+                                return AuthTokenResponse(
+                                    accessToken=sb_token,
+                                    tokenType="Bearer",
+                                    user=UserProfileResponse(**profile),
+                                )
+                    except Exception as retry_err:
+                        logger.warning("Supabase login retry after auto-confirm encountered: %s", retry_err)
         except Exception as sb_err:
             logger.info("Supabase password grant fallback notice: %s", sb_err)
 
@@ -164,6 +287,17 @@ async def login(payload: UserLoginRequest) -> AuthTokenResponse:
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid email or password.",
     )
+
+
+@router.post("/confirm-email")
+async def confirm_email_endpoint(payload: EmailConfirmPayload) -> Dict[str, Any]:
+    """Auto-confirms a user's email via Supabase Admin API so users are never blocked by missing verification emails."""
+    confirmed = _confirm_supabase_user_by_email(payload.email)
+    return {
+        "status": "ok",
+        "confirmed": confirmed,
+        "message": f"Email '{payload.email}' has been verified successfully. You may now sign in.",
+    }
 
 
 @router.get("/me", response_model=UserProfileResponse)

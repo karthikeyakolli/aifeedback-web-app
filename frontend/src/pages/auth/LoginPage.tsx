@@ -101,7 +101,17 @@ export const LoginPage: React.FC = () => {
                 className="mb-6 p-3.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2.5"
               >
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-                <span className="leading-relaxed">{error}</span>
+                <div className="leading-relaxed flex-1">
+                  <div>{error}</div>
+                  {(error.toLowerCase().includes('confirm') || error.toLowerCase().includes('verif')) && (
+                    <Link
+                      to={`/verify-email?email=${encodeURIComponent(email)}`}
+                      className="mt-1.5 inline-block font-bold text-indigo-600 dark:text-indigo-400 underline hover:opacity-85"
+                    >
+                      Click here to instantly verify your email address →
+                    </Link>
+                  )}
+                </div>
               </div>
             )}
 

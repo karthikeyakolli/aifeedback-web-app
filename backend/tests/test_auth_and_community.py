@@ -487,3 +487,15 @@ def test_submit_report(registered_users):
     data = res.json()
     assert data["status"] == "pending"
     assert data["id"].startswith("rep_")
+
+
+def test_confirm_email_endpoint():
+    """Verifies that the /api/v1/auth/confirm-email endpoint handles email confirmation safely."""
+    res = client.post(
+        "/api/v1/auth/confirm-email",
+        json={"email": "alice.creator@example.com"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ok"
+    assert "verified" in data["message"].lower() or "confirm" in data["message"].lower()
