@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Dict, Any, List, Optional
+import urllib.request
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from backend.app.config import settings
+
+logger = logging.getLogger(__name__)
 from backend.app.schemas.auth import (
     UserRegisterRequest,
     UserLoginRequest,
@@ -51,12 +56,7 @@ async def get_auth_config() -> Dict[str, Any]:
 
 @router.post("/signup", response_model=AuthTokenResponse)
 async def signup(payload: UserRegisterRequest) -> AuthTokenResponse:
-    """Registers a new account. Active in development and local mode."""
-    if settings.environment.lower() == "production" and get_active_auth_provider() == "supabase":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="In production/Supabase mode, sign-ups must be performed directly via Supabase Auth client.",
-        )
+    """Registers a new account with immediate session issuance and optional Supabase sync."""
     user_id, profile = community_repo.create_user(
         email=payload.email,
         password=payload.password,
@@ -65,6 +65,35 @@ async def signup(payload: UserRegisterRequest) -> AuthTokenResponse:
         bio=payload.bio or "",
         avatar_url=payload.avatar_url,
     )
+
+    # Automatically sync confirmed user to Supabase Auth Admin if credentials configured
+    if settings.supabase_url and settings.supabase_service_role_key:
+        try:
+            sync_url = f"{settings.supabase_url.rstrip('/')}/auth/v1/admin/users"
+            sync_payload = {
+                "email": payload.email.strip().lower(),
+                "password": payload.password,
+                "email_confirm": True,
+                "user_metadata": {
+                    "username": payload.username.strip(),
+                    "display_name": payload.display_name.strip(),
+                },
+            }
+            req = urllib.request.Request(
+                sync_url,
+                data=json.dumps(sync_payload).encode(),
+                headers={
+                    "apikey": settings.supabase_service_role_key,
+                    "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                pass
+        except Exception as e:
+            logger.info("Supabase Auth sync notice (non-fatal): %s", e)
+
     token = create_access_token(user_id=user_id, email=payload.email, username=payload.username)
     return AuthTokenResponse(
         accessToken=token,
@@ -75,20 +104,65 @@ async def signup(payload: UserRegisterRequest) -> AuthTokenResponse:
 
 @router.post("/login", response_model=AuthTokenResponse)
 async def login(payload: UserLoginRequest) -> AuthTokenResponse:
-    """Authenticates existing user. Active in development and local mode."""
-    if settings.environment.lower() == "production" and get_active_auth_provider() == "supabase":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="In production/Supabase mode, login must be performed directly via Supabase Auth client.",
+    """Authenticates existing user with unified database + Supabase fallback."""
+    # 1. Primary: If user is registered in local database, authenticate directly
+    with community_repo.db.session() as conn:
+        existing_local = conn.execute(
+            "SELECT id FROM auth_users WHERE lower(email) = lower(?)",
+            (payload.email.strip(),),
+        ).fetchone()
+
+    if existing_local:
+        profile = community_repo.authenticate_user(email=payload.email, password=payload.password)
+        token = create_access_token(
+            user_id=profile["id"], email=payload.email, username=profile["username"]
         )
-    profile = community_repo.authenticate_user(email=payload.email, password=payload.password)
-    token = create_access_token(
-        user_id=profile["id"], email=payload.email, username=profile["username"]
-    )
-    return AuthTokenResponse(
-        accessToken=token,
-        tokenType="Bearer",
-        user=UserProfileResponse(**profile),
+        return AuthTokenResponse(
+            accessToken=token,
+            tokenType="Bearer",
+            user=UserProfileResponse(**profile),
+        )
+
+    # 2. Fallback: If user is not in local database, authenticate against Supabase Auth
+    if settings.supabase_url and settings.supabase_anon_key:
+        try:
+            auth_url = f"{settings.supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
+            auth_payload = {
+                "email": payload.email.strip().lower(),
+                "password": payload.password,
+            }
+            req = urllib.request.Request(
+                auth_url,
+                data=json.dumps(auth_payload).encode(),
+                headers={
+                    "apikey": settings.supabase_anon_key,
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+                sb_token = data.get("access_token")
+                if sb_token:
+                    sb_user = data.get("user", {})
+                    meta = sb_user.get("user_metadata", {}) or {}
+                    profile = community_repo.ensure_profile_exists(
+                        user_id=sb_user.get("id"),
+                        email=payload.email,
+                        username=meta.get("username"),
+                        display_name=meta.get("display_name") or meta.get("full_name"),
+                    )
+                    return AuthTokenResponse(
+                        accessToken=sb_token,
+                        tokenType="Bearer",
+                        user=UserProfileResponse(**profile),
+                    )
+        except Exception as sb_err:
+            logger.info("Supabase password grant fallback notice: %s", sb_err)
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid email or password.",
     )
 
 

@@ -13,6 +13,8 @@ interface AuthContextType {
   openAuthModal: (mode?: 'login' | 'signup') => void;
   closeAuthModal: () => void;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle?: () => Promise<void>;
+  loginWithGitHub?: () => Promise<void>;
   signup: (data: {
     email: string;
     password: string;
@@ -133,6 +135,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithGoogle = async (): Promise<void> => {
+    if (isSupabaseConfigured() && supabase) {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+      if (error) throw error;
+    } else {
+      throw new Error('Google OAuth is not configured on this environment.');
+    }
+  };
+
+  const loginWithGitHub = async (): Promise<void> => {
+    if (isSupabaseConfigured() && supabase) {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+      if (error) throw error;
+    } else {
+      throw new Error('GitHub OAuth is not configured on this environment.');
+    }
+  };
+
   const signup = async (data: {
     email: string;
     password: string;
@@ -166,9 +196,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(u);
             closeAuthModal();
             return;
+          } else if (!error && authData.user && !authData.session) {
+            throw new Error(
+              'Account created! A confirmation email was dispatched. Please verify your inbox, then sign in.'
+            );
           }
-        } catch {
-          // ignore
+        } catch (sbErr: any) {
+          if (sbErr.message && !sbErr.message.includes('fetch')) {
+            throw sbErr;
+          }
         }
       }
       throw err;
@@ -219,6 +255,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         openAuthModal,
         closeAuthModal,
         login,
+        loginWithGoogle,
+        loginWithGitHub,
         signup,
         quickLoginDev,
         logout,
