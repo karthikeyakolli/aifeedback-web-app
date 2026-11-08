@@ -1,7 +1,7 @@
 {
   ".github/workflows/ci.yml": {
-    "mtime": 1794149504.1527176,
-    "seen": 1794149520.7266197,
+    "mtime": 1794149616.9651258,
+    "seen": 1794149907.0933144,
     "ast_hash": "b20503b4f2d68a412bc419090c98df6b",
     "semantic_hash": ""
   },
@@ -312,9 +312,9 @@
     "semantic_hash": "f048306f29098eb2e08a7758cd7dfd86"
   },
   "backend/app/services/project_chat_service.py": {
-    "mtime": 1794068376.880833,
-    "seen": 1794068846.5933936,
-    "ast_hash": "fca87d2a0c3f60cebf5f86747080476d",
+    "mtime": 1794149860.6149116,
+    "seen": 1794149907.1203766,
+    "ast_hash": "0e6fbed8f421567deefd24a90ddceb03",
     "semantic_hash": ""
   },
   "backend/app/services/provider_policy_service.py": {
@@ -912,8 +912,8 @@
     "semantic_hash": ""
   },
   "frontend/src/context/AuthContext.tsx": {
-    "mtime": 1794149216.8977966,
-    "seen": 1794149331.4453144,
+    "mtime": 1794149616.5005498,
+    "seen": 1794149907.1753793,
     "ast_hash": "b469facce9f5c3aa55eeb0e8586b5aef",
     "semantic_hash": ""
   },
@@ -1068,20 +1068,20 @@
     "semantic_hash": "7dc75a61e75a9cd27353fac4ad995157"
   },
   "frontend/src/pages/auth/LoginPage.tsx": {
-    "mtime": 1794149258.2516685,
-    "seen": 1794149331.4616308,
+    "mtime": 1794149616.581999,
+    "seen": 1794149907.1905189,
     "ast_hash": "bc6565761d82805d89d202d1c4e35e09",
     "semantic_hash": ""
   },
   "frontend/src/pages/auth/SignupPage.tsx": {
-    "mtime": 1794149268.6652346,
-    "seen": 1794149331.461637,
+    "mtime": 1794149616.6889048,
+    "seen": 1794149907.1905258,
     "ast_hash": "9e4c065f47dbcf38956097b5680ecd7c",
     "semantic_hash": ""
   },
   "frontend/src/pages/auth/VerifyEmailPage.tsx": {
-    "mtime": 1794149244.6580079,
-    "seen": 1794149331.4616416,
+    "mtime": 1794149616.740436,
+    "seen": 1794149907.1905298,
     "ast_hash": "d30d6a22d5d2081d550d8d3319192647",
     "semantic_hash": ""
   },
@@ -1134,8 +1134,8 @@
     "semantic_hash": "02291b9f51210ff399aa6010c658ade1"
   },
   "frontend/src/services/api.ts": {
-    "mtime": 1794149031.6552486,
-    "seen": 1794149331.4660878,
+    "mtime": 1794149616.3806365,
+    "seen": 1794149907.1943362,
     "ast_hash": "994c5eb43fc07613d25f0d0f74a2fbab",
     "semantic_hash": ""
   },

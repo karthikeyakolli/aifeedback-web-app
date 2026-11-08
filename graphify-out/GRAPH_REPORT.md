@@ -6,12 +6,12 @@
 - Unclassified: 18 file(s) not represented in the graph (top: (none) 10, .css 2, .jsonc 2)
 
 ## Summary
-- 2834 nodes · 6692 edges · 141 communities (73 shown, 68 thin omitted)
+- 2834 nodes · 6692 edges · 145 communities (75 shown, 70 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 223 edges (avg confidence: 0.94)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2e7a8c54`
+- Built from commit: `512a8f6a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -39,7 +39,7 @@
 - project.py
 - get_user_id
 - steps
-- v1/ai.py
+- ReviewService
 - SourceIngestionService
 - test_full_product_review.py
 - utc_now_iso
@@ -47,14 +47,14 @@
 - comments.py
 - v1/credentials.py
 - v1/creator.py
-- auth_service.py
+- test_phase_2_1_reconciliation.py
 - react
 - DatabaseManager
 - typing
 - post
 - ProjectChatAndWorkflowService
 - steps
-- GeminiProvider
+- ResearchChatService
 - create_access_token
 - uuid
 - notifications.py
@@ -72,7 +72,7 @@
 - projects.py
 - test_phase_6_feedback_report.py
 - ReviewWorker
-- test_online_brain_and_discussions.py
+- get_current_user_required
 - flatten_comments_tree
 - StaleLeaseError
 - dependencies
@@ -90,8 +90,8 @@
 - NvidiaNimProvider
 - test_phase_2_engineering_foundation.py
 - database.types.ts
-- test_phase_4_chat_and_rag.py
-- Any
+- repository.py
+- TestClient
 - test_independent_projects_can_run_reviews_concurrently
 - test_idempotent_finalization_does_not_duplicate_counters_or_reports
 - TestReportManagementAndAccessBoundaries
@@ -105,6 +105,7 @@
 - .oxlintrc.json
 - scripts
 - services
+- create_mock_user
 - tsconfig.json
 - clsx
 - @supabase/supabase-js
@@ -112,8 +113,8 @@
 - tailwindcss@^4.3.3
 - three
 - TestPDFExportEngine
-- repository.py
-- router.py
+- auth_service.py
+- schemas/auth.py
 - test_stale_job_terminal_failure_exhausts_retries_and_resets_project
 - v1/auth.py
 - ProjectApkReleaseRead
@@ -121,9 +122,12 @@
 - check_mfa_status
 - test_phase_3_saas_auth_and_multitenancy.py
 - ComprehensiveIntelligenceService
-- verify_mfa
-- AuthenticatedPrincipal
+- create_backup
+- delete_chat_session
 - request_reset
+- .generate_suggestions
+- Settings
+- OpenRouterFreeTierViolationError
 
 ## God Nodes (most connected - your core abstractions)
 1. `Button` - 92 edges
@@ -140,19 +144,19 @@
 ## Surprising Connections (you probably didn't know these)
 - `test_area_10_backup_restoration_integrity()` --calls--> `verify_backup_and_recovery()`  [EXTRACTED]
   backend/tests/test_phase_13_production_readiness.py → scripts/verify_backup_and_recovery.py
-- `get_research_report()` --uses--> `ResearchReportResponse`  [INFERRED]
-  backend/app/api/v1/ai.py → backend/app/schemas/research_report.py
-- `list_user_reports_for_post()` --uses--> `ResearchReportResponse`  [INFERRED]
-  backend/app/api/v1/ai.py → backend/app/schemas/research_report.py
-- `ReportGenerationService` --uses--> `ResearchReportType`  [INFERRED]
-  backend/app/services/report_generation_service.py → backend/app/schemas/research_report.py
-- `ReviewService` --uses--> `ReportPDFRenderer`  [INFERRED]
-  backend/app/services/review_service.py → backend/app/services/report_generation_service.py
+- `lifespan()` --calls--> `seed_demo_data()`  [EXTRACTED]
+  backend/app/main.py → scripts/seed_demo_community_data.py
+- `upload_project_apk_release()` --uses--> `ProjectApkReleaseRead`  [INFERRED]
+  backend/app/api/v1/projects.py → backend/app/schemas/project.py
+- `AIOrchestratorService` --uses--> `RawProjectFindingProposal`  [INFERRED]
+  backend/app/services/ai_orchestrator.py → backend/app/schemas/project.py
+- `ProjectAIReviewEngine` --uses--> `RawProjectFindingProposal`  [INFERRED]
+  backend/app/services/project_ai_review_engine.py → backend/app/schemas/project.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (141 total, 68 thin omitted)
+## Communities (145 total, 70 thin omitted)
 
 ### Community 0 - "types/index.ts"
 Cohesion: 0.04
@@ -175,8 +179,8 @@ Cohesion: 0.09
 Nodes (39): AboutModal(), AboutModalProps, Drawer(), DrawerProps, Dropdown, DropdownCheckboxItem, DropdownContent, DropdownGroup (+31 more)
 
 ### Community 5 - "schemas/auth.py"
-Cohesion: 0.17
-Nodes (9): login(), oauth_callback(), signup(), AuthTokenResponse, OAuthCallbackPayload, PublicUserProfileResponse, UserLoginRequest, UserProfileResponse (+1 more)
+Cohesion: 0.13
+Nodes (7): get_me(), oauth_callback(), signup(), AuthTokenResponse, OAuthCallbackPayload, UserProfileResponse, UserRegisterRequest
 
 ### Community 6 - "useAuth"
 Cohesion: 0.09
@@ -188,18 +192,18 @@ Nodes (7): DiscussionRetrievalService, extract_keywords(), RetrievalResult, Retr
 
 ### Community 9 - "schemas/ai.py"
 Cohesion: 0.06
-Nodes (20): AIAnalysisResponse, GeminiAnalysisOutput, RawRecommendationProposal, RawThemeProposal, AnalysisService, compute_discussion_input_hash(), InsufficientFeedbackError, auth_users() (+12 more)
+Nodes (21): AIAnalysisResponse, RawThemeProposal, AnalysisService, compute_discussion_input_hash(), flatten_comments_tree(), _traverse(), InsufficientFeedbackError, MockGeminiProvider (+13 more)
 
 ### Community 11 - "posts.py"
 Cohesion: 0.07
 Nodes (21): bookmark_post(), create_post(), delete_post(), delete_post_document(), get_post(), get_post_document(), get_saved_posts(), list_post_documents() (+13 more)
 
 ### Community 12 - "Any"
-Cohesion: 0.09
-Nodes (13): delete_chat_session(), delete_research_report(), download_product_review(), download_research_report(), get_chat_session(), get_post_insights(), get_product_review(), get_research_report() (+5 more)
+Cohesion: 0.11
+Nodes (11): create_chat_session(), download_product_review(), download_research_report(), get_chat_session(), get_post_insights(), get_product_review(), get_product_suggestions(), get_review_conversation() (+3 more)
 
 ### Community 13 - "report.py"
-Cohesion: 0.11
+Cohesion: 0.13
 Nodes (8): list_reports(), resolve_report(), submit_report(), toggle_post_lock(), PostLockRequest, ReportCreateRequest, ReportResolveRequest, ReportResponse
 
 ### Community 14 - "ReportGenerationService"
@@ -208,15 +212,15 @@ Nodes (4): ReportGenerationService, ReportPDFRenderer, _sanitize_for_pdf(), _flu
 
 ### Community 15 - "pytest"
 Cohesion: 0.09
-Nodes (16): BudgetExceededError, validate_external_url(), main(), test_ssrf_protection_rejects_forbidden_and_private_hosts(), client(), _create_authenticated_user(), test_area_1_account_project_and_task_ai_budget_enforcement(), test_area_2_complete_finding_evidence_traceability() (+8 more)
+Nodes (17): BudgetExceededError, validate_external_url(), main(), test_ssrf_protection_rejects_forbidden_and_private_hosts(), client(), _create_authenticated_user(), test_area_10_backup_restoration_integrity(), test_area_1_account_project_and_task_ai_budget_enforcement() (+9 more)
 
 ### Community 16 - "OpenRouterProvider"
-Cohesion: 0.07
-Nodes (7): Settings, OpenRouterFreeTierViolationError, OpenRouterProvider, clean_input_text(), test_openrouter_429_automatic_fallback(), test_openrouter_free_tier_enforcement(), test_openrouter_headers()
+Cohesion: 0.11
+Nodes (5): OpenRouterProvider, clean_input_text(), test_openrouter_429_automatic_fallback(), test_openrouter_free_tier_enforcement(), test_openrouter_headers()
 
 ### Community 18 - "os"
-Cohesion: 0.07
-Nodes (23): enroll_user_mfa(), test_area_10_backup_restoration_integrity(), capture_page(), main(), main(), run_capture(), capture_studio_experience(), main() (+15 more)
+Cohesion: 0.10
+Nodes (16): capture_page(), main(), main(), run_capture(), capture_studio_experience(), main(), run_captures(), run_captures() (+8 more)
 
 ### Community 19 - "CredentialVaultService"
 Cohesion: 0.09
@@ -234,9 +238,9 @@ Nodes (21): delete_project(), download_project_apk_release(), get_ai_review_stat
 Cohesion: 0.06
 Nodes (36): runs-on, steps, concurrency, cancel-in-progress, group, environment, needs, runs-on (+28 more)
 
-### Community 23 - "v1/ai.py"
-Cohesion: 0.04
-Nodes (29): create_chat_session(), get_product_suggestions(), ChatMessageRequest, ChatMessageResponse, ChatSessionCreateRequest, ChatSessionResponse, ChatSessionUpdateRequest, CitationRecord (+21 more)
+### Community 23 - "ReviewService"
+Cohesion: 0.09
+Nodes (11): ChatMessageResponse, CitationRecord, DocumentSourceInfo, GenerateReviewRequest, ProductReviewResponse, RawReviewFinding, ReviewFinding, ReviewSourceAvailabilityResponse (+3 more)
 
 ### Community 25 - "test_full_product_review.py"
 Cohesion: 0.08
@@ -254,9 +258,9 @@ Nodes (13): add_credential(), delete_credential(), _extract_user_id(), get_crede
 Cohesion: 0.13
 Nodes (13): get_creator_studio(), get_public_creator_profile(), get_user_id(), publish_project(), unpublish_project(), update_creator_profile(), CreatorProfileRead, CreatorProfileUpdate (+5 more)
 
-### Community 32 - "auth_service.py"
-Cohesion: 0.06
-Nodes (20): compute_totp_code(), create_mock_supabase_token(), decode_access_token(), get_current_user_optional(), get_current_user_required(), handle_oauth_callback(), request_password_reset(), verify_local_token() (+12 more)
+### Community 32 - "test_phase_2_1_reconciliation.py"
+Cohesion: 0.09
+Nodes (10): create_mock_supabase_token(), auth_users(), test_anonymous_comment_privacy(), test_anonymous_post_privacy_and_immutability(), test_atomic_vote_toggling_and_comment_counter_integrity(), test_input_validation_and_url_scheme_protection(), test_moderation_reports_privacy(), test_ownership_enforcement_on_posts_and_comments() (+2 more)
 
 ### Community 33 - "react"
 Cohesion: 0.17
@@ -267,8 +271,8 @@ Cohesion: 0.14
 Nodes (4): DatabaseManager, get_db_path(), CreatorRepository, utc_now_iso()
 
 ### Community 35 - "typing"
-Cohesion: 0.10
-Nodes (4): clean_evidence_quote(), clean_list_items(), clean_output_text(), test_clean_evidence_quote_strips_all_symbols()
+Cohesion: 0.05
+Nodes (5): lifespan(), clean_evidence_quote(), clean_list_items(), clean_output_text(), test_clean_evidence_quote_strips_all_symbols()
 
 ### Community 36 - "post"
 Cohesion: 0.08
@@ -278,37 +282,33 @@ Nodes (15): create_project(), link_project_design(), link_project_repository(), 
 Cohesion: 0.09
 Nodes (24): name, runs-on, steps, name, runs-on, steps, jobs, backend-test (+16 more)
 
-### Community 39 - "GeminiProvider"
-Cohesion: 0.08
-Nodes (5): GeminiProvider, get_ai_provider(), LLMProvider, test_gemini_provider_missing_key_behavior(), test_missing_api_key_returns_503()
-
 ### Community 40 - "create_access_token"
-Cohesion: 0.05
-Nodes (19): create_access_token(), auth_headers(), client(), test_apk_release_lifecycle(), test_public_projects_sort_options(), test_recent_comments_endpoint(), test_moderation_report_submission_and_resolution(), test_notifications_lifecycle() (+11 more)
+Cohesion: 0.09
+Nodes (13): create_access_token(), auth_headers(), client(), test_apk_release_lifecycle(), test_public_projects_sort_options(), test_recent_comments_endpoint(), test_authenticated_principal_endpoint(), test_oauth_linking_and_collision_protection() (+5 more)
 
 ### Community 41 - "uuid"
-Cohesion: 0.05
-Nodes (22): test_ai_orchestrator_byok_vault_integration(), test_ai_orchestrator_deterministic_fallback(), test_ai_orchestrator_token_usage_ledger_recording(), test_compare_feedback_reports_includes_omitted_findings(), test_retrieval_service_produces_clean_evidence(), test_source_ingestion_preserves_canonical_verbatim_raw_text(), test_budget_reservation_and_hard_stop(), test_decoupled_task_completion_and_insufficient_evidence() (+14 more)
+Cohesion: 0.03
+Nodes (32): audit_and_moderate_content(), test_ai_orchestrator_byok_vault_integration(), test_ai_orchestrator_deterministic_fallback(), test_ai_orchestrator_token_usage_ledger_recording(), test_compare_feedback_reports_includes_omitted_findings(), test_retrieval_service_produces_clean_evidence(), test_source_ingestion_preserves_canonical_verbatim_raw_text(), _signup_user() (+24 more)
 
 ### Community 42 - "notifications.py"
-Cohesion: 0.14
-Nodes (5): get_notifications(), get_unread_count(), mark_all_read(), mark_read(), NotificationResponse
+Cohesion: 0.12
+Nodes (6): get_notifications(), get_unread_count(), mark_all_read(), mark_read(), NotificationResponse, UnreadCountResponse
 
 ### Community 45 - "compilerOptions"
 Cohesion: 0.10
 Nodes (20): compilerOptions, allowArbitraryExtensions, allowImportingTsExtensions, erasableSyntaxOnly, jsx, lib, module, moduleDetection (+12 more)
 
 ### Community 46 - "GeminiConfigurationError"
-Cohesion: 0.05
-Nodes (19): generate_full_product_review(), send_chat_message(), send_review_conversation_message(), trigger_post_analysis(), ResearchAnswerProposal, RawReviewFinding, StructuredProductReviewProposal, GeminiConfigurationError (+11 more)
+Cohesion: 0.04
+Nodes (23): generate_full_product_review(), send_chat_message(), send_review_conversation_message(), trigger_post_analysis(), CrossSourceComparison, GeminiAnalysisOutput, ResearchAnswerProposal, StructuredRecommendation (+15 more)
 
 ### Community 47 - "test_phase_8_public_space.py"
 Cohesion: 0.12
 Nodes (10): community_headers(), create_user(), creator_headers(), ensure_offline_ai(), test_community_upvoting_and_rate_enforcement(), test_direct_public_project_access_and_private_isolation(), test_explicit_publishing_and_revocation_lifecycle(), test_public_feedback_report_access() (+2 more)
 
 ### Community 48 - "v1/dev.py"
-Cohesion: 0.05
-Nodes (36): get_dev_health(), get_dev_quick_token(), manage_synthetic_data(), run_ai_test(), run_evaluation_benchmark(), verify_dev_mode(), AITestCaseRequest, AITestCaseResult (+28 more)
+Cohesion: 0.07
+Nodes (29): get_dev_health(), get_dev_quick_token(), manage_synthetic_data(), run_ai_test(), run_evaluation_benchmark(), verify_dev_mode(), AITestCaseRequest, AITestCaseResult (+21 more)
 
 ### Community 50 - "test_phase_2_reliability_and_concurrency.py"
 Cohesion: 0.14
@@ -319,12 +319,12 @@ Cohesion: 0.11
 Nodes (9): test_create_project_full_intake_workflow(), test_cross_user_isolation(), test_delete_project_and_cascade(), test_field_validation_boundaries(), test_lifecycle_status_progression(), test_personal_projects_filtering(), test_reopen_and_update_project(), user_a() (+1 more)
 
 ### Community 52 - "report_generation_service.py"
-Cohesion: 0.09
-Nodes (8): generate_research_report(), rename_chat_session(), update_research_report(), UnreadCountResponse, ReportGenerateRequest, ReportUpdateRequest, ResearchReportResponse, ResearchReportType
+Cohesion: 0.11
+Nodes (10): generate_research_report(), get_research_report(), list_user_reports_for_post(), rename_chat_session(), update_research_report(), ProductSuggestionResponse, ReportGenerateRequest, ReportUpdateRequest (+2 more)
 
 ### Community 53 - "create_application"
-Cohesion: 0.08
-Nodes (10): get_health(), get_readiness(), create_application(), root_health(), lifespan(), HealthResponse, confirm_password_reset(), hash_password() (+2 more)
+Cohesion: 0.09
+Nodes (9): get_health(), get_readiness(), create_application(), root_health(), HealthResponse, client(), app_client(), author_token() (+1 more)
 
 ### Community 54 - "projects.py"
 Cohesion: 0.10
@@ -338,9 +338,9 @@ Nodes (8): ensure_offline_ai(), other_user_headers(), owner_headers(), test_feed
 Cohesion: 0.15
 Nodes (3): ReviewWorker, test_atomic_review_finalization_success(), test_worker_claiming_and_lease_renewal()
 
-### Community 57 - "test_online_brain_and_discussions.py"
-Cohesion: 0.12
-Nodes (9): audit_and_moderate_content(), _signup_user(), test_moderation_shield_and_spam_detection(), test_multi_grounded_project_chat_with_brain(), test_project_changelog_lifecycle(), test_project_review_notifications(), test_recent_comments_discussion_feed_filtering(), test_similar_projects_ecosystem_cross_referencing() (+1 more)
+### Community 57 - "get_current_user_required"
+Cohesion: 0.17
+Nodes (7): decode_access_token(), get_current_user_optional(), get_current_user_required(), handle_oauth_callback(), verify_local_token(), verify_supabase_token(), test_expired_session_token_rejection()
 
 ### Community 60 - "dependencies"
 Cohesion: 0.12
@@ -382,13 +382,13 @@ Nodes (3): NvidiaNimProvider, test_nvidia_nim_markdown_fence_cleaning(), test_nv
 Cohesion: 0.18
 Nodes (10): CompositeTypes, Constants, Database, DatabaseWithoutInternals, DefaultSchema, Enums, Json, Tables (+2 more)
 
-### Community 76 - "test_phase_4_chat_and_rag.py"
-Cohesion: 0.06
-Nodes (19): calculate_prioritization_score(), PrioritizationScoreBreakdown, ProductSuggestionService, client(), create_auth_headers(), create_mock_user(), setup_test_database(), test_bm25_keyword_retrieval_ranking() (+11 more)
+### Community 76 - "repository.py"
+Cohesion: 0.04
+Nodes (29): ChatMessageRequest, ChatSessionCreateRequest, ChatSessionResponse, ChatSessionUpdateRequest, DisagreementFinding, RawDisagreementProposal, RawRecommendationProposal, RecommendationFinding (+21 more)
 
-### Community 79 - "Any"
-Cohesion: 0.14
-Nodes (7): enroll_mfa(), get_auth_config(), get_me(), list_linked_identities(), logout(), unlink_identity(), MFAEnrollResponse
+### Community 79 - "TestClient"
+Cohesion: 0.13
+Nodes (7): test_ai_testing_lab_complaints(), test_ai_testing_lab_empty_input_robustness(), test_ai_testing_lab_prompt_injection_robustness(), test_dev_endpoints_forbidden_in_production(), test_dev_health_telemetry(), test_dev_quick_auth_tokens(), test_evaluation_benchmark_suite()
 
 ### Community 84 - "test_phase_5_ai_review_engine.py"
 Cohesion: 0.13
@@ -418,13 +418,21 @@ Nodes (5): scripts, build, dev, lint, preview
 Cohesion: 0.14
 Nodes (13): key, sync, value, services, buildCommand, env, envVars, healthCheckPath (+5 more)
 
-### Community 124 - "repository.py"
-Cohesion: 0.09
-Nodes (10): ensure_db(), test_authenticated_principal_endpoint(), test_mfa_enrollment_and_verification_endpoints(), test_oauth_linking_and_collision_protection(), test_password_reset_lifecycle(), test_vault_aad_tamper_and_tenant_isolation(), test_vault_crud_and_isolation(), test_vault_encryption_decryption_with_aad() (+2 more)
+### Community 98 - "create_mock_user"
+Cohesion: 0.19
+Nodes (6): create_auth_headers(), create_mock_user(), test_chat_session_lifecycle_and_ownership_isolation(), test_citation_hallucination_pruning_in_chat(), test_prompt_injection_in_comments_defended(), test_suggestions_endpoint()
+
+### Community 124 - "auth_service.py"
+Cohesion: 0.08
+Nodes (15): compute_totp_code(), enroll_user_mfa(), hash_password(), verify_password(), verify_totp_code(), ensure_db(), test_mfa_enrollment_and_verification_endpoints(), test_mfa_rfc6238_computation_and_drift() (+7 more)
+
+### Community 125 - "schemas/auth.py"
+Cohesion: 0.11
+Nodes (9): confirm_reset(), enroll_mfa(), get_user_public_profile(), AuthenticatedPrincipal, MFAEnrollResponse, PasswordResetConfirmPayload, PublicUserProfileResponse, confirm_password_reset() (+1 more)
 
 ### Community 130 - "v1/auth.py"
-Cohesion: 0.18
-Nodes (6): confirm_email_endpoint(), confirm_reset(), _confirm_supabase_user_by_email(), EmailConfirmPayload, get_current_principal(), PasswordResetConfirmPayload
+Cohesion: 0.11
+Nodes (10): confirm_email_endpoint(), _confirm_supabase_user_by_email(), EmailConfirmPayload, get_auth_config(), get_current_principal(), list_linked_identities(), login(), logout() (+2 more)
 
 ### Community 131 - "ProjectApkReleaseRead"
 Cohesion: 0.14
@@ -435,32 +443,36 @@ Cohesion: 0.24
 Nodes (4): RawProjectFindingProposal, StructuredProjectFeedbackProposal, test_ai_orchestrator_sanitizes_proposals(), test_ai_review_engine_picks_up_vault_byok_credential()
 
 ### Community 133 - "check_mfa_status"
-Cohesion: 0.22
-Nodes (5): check_mfa_status(), unenroll_mfa(), MFAStatusResponse, get_user_mfa_status(), unenroll_user_mfa()
+Cohesion: 0.14
+Nodes (8): check_mfa_status(), unenroll_mfa(), verify_mfa(), MFAStatusResponse, MFAVerifyPayload, get_user_mfa_status(), unenroll_user_mfa(), verify_user_mfa()
 
 ### Community 134 - "test_phase_3_saas_auth_and_multitenancy.py"
 Cohesion: 0.31
 Nodes (4): _register_user(), test_multi_tenant_project_sources_and_documents_isolation(), test_multi_tenant_research_conversations_isolation(), test_password_recovery_full_lifecycle()
 
-### Community 136 - "verify_mfa"
+### Community 136 - "create_backup"
+Cohesion: 0.43
+Nodes (4): create_backup(), ensure_backup_dir(), list_backups(), verify_database_integrity()
+
+### Community 138 - "request_reset"
 Cohesion: 0.40
-Nodes (3): verify_mfa(), MFAVerifyPayload, verify_user_mfa()
+Nodes (3): request_reset(), PasswordResetRequestPayload, request_password_reset()
 
 ## Knowledge Gaps
-- **68 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **70 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `CommunityRepository` connect `CommunityRepository` to `auth_service.py`, `.update_research_report`, `.get_comment`, `._serialize_product_review`, `._serialize_post`, `.create_user`, `utc_now_iso`, `Any`, `.create_chat_session`, `.save_analysis_run`?**
-  _High betweenness centrality (0.091) - this node is a cross-community bridge._
+- **Why does `CommunityRepository` connect `CommunityRepository` to `.update_research_report`, `.get_comment`, `repository.py`, `._serialize_product_review`, `._serialize_post`, `.create_user`, `utc_now_iso`, `Any`, `.create_chat_session`, `.save_analysis_run`?**
+  _High betweenness centrality (0.090) - this node is a cross-community bridge._
 - **Should `types/index.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.0393733250876108 - nodes in this community are weakly interconnected._
-- **Why does `clean_evidence_quote()` connect `typing` to `StructuredProjectFeedbackProposal`, `ProjectChatAndWorkflowService`, `ComprehensiveIntelligenceService`, `AIOrchestratorService`, `.retrieve_evidence`, `AdvancedRAGEngine`, `CompletenessMapService`, `WebIntelligenceService`, `v1/ai.py`, `SourceIngestionService`?**
-  _High betweenness centrality (0.033) - this node is a cross-community bridge._
+- **Why does `ProjectRepository` connect `ProjectRepository` to `typing`?**
+  _High betweenness centrality (0.029) - this node is a cross-community bridge._
 - **Should `lucide-react` be split into smaller, more focused modules?**
   _Cohesion score 0.0927536231884058 - nodes in this community are weakly interconnected._
-- **Why does `ProjectRepository` connect `ProjectRepository` to `typing`?**
+- **Why does `clean_evidence_quote()` connect `typing` to `StructuredProjectFeedbackProposal`, `ProjectChatAndWorkflowService`, `ComprehensiveIntelligenceService`, `AIOrchestratorService`, `.retrieve_evidence`, `repository.py`, `AdvancedRAGEngine`, `CompletenessMapService`, `WebIntelligenceService`, `SourceIngestionService`?**
   _High betweenness centrality (0.021) - this node is a cross-community bridge._
 - **Should `Button` be split into smaller, more focused modules?**
   _Cohesion score 0.09482001755926252 - nodes in this community are weakly interconnected._

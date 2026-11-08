@@ -248,7 +248,7 @@ class ProjectChatAndWorkflowService:
         for sp in similar_projects:
             citations.append({
                 "chunkId": f"proj_{sp['id'][:8]}",
-                "sourceName": f"Platform Project #{sp['name']}",
+                "sourceName": f"Platform Project: {sp['name']}",
                 "cleanQuote": f"Similar {sp['category']} project on FeedbackAI: {sp['tagline']}",
                 "relevancePercentage": 84,
                 "sourceType": "similar_project",
@@ -460,7 +460,7 @@ class ProjectChatAndWorkflowService:
 
         # 5. FeedbackAI Platform Ecosystem & Similar Projects Benchmark
         if similar_projects:
-            similar_names = ", ".join(f"#{p['name']}" for p in similar_projects)
+            similar_names = ", ".join(f"Project '{p['name']}'" for p in similar_projects)
             sections.append(
                 f"FeedbackAI Ecosystem & Similar Projects Benchmark:\n"
                 f"Cross-referencing related public projects on our platform in the '{category}' space: {similar_names}. "
@@ -493,7 +493,8 @@ class ProjectChatAndWorkflowService:
             )
 
         full_text = "\n\n".join(sections)
-        return clean_output_text(full_text)
+        sanitized = clean_output_text(full_text).replace("#", "")
+        return sanitized
 
     # =========================================================================
     # 2. Finding Actions & Improvement Tasks
