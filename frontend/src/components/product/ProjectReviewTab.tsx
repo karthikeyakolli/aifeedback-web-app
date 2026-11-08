@@ -222,7 +222,7 @@ export const ProjectReviewTab: React.FC<ProjectReviewTabProps> = ({
     try {
       const reviewStatus = await api.startAIReview(project.id, {
         focus_areas: selectedFocusAreas,
-        sync: false,
+        sync: true,
       });
 
       setActiveReview(reviewStatus);

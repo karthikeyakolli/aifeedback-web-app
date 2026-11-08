@@ -68,7 +68,7 @@ class ProjectAIReviewEngine:
 
         # 4. Resolve provider and model
         provider = "gemini"
-        model_id = request.model_override or settings.gemini_model or "gemini-2.5-flash"
+        model_id = request.model_override or settings.gemini_model or "gemini-3.8-flash"
         if not settings.gemini_api_key or "placeholder" in settings.gemini_api_key.lower():
             if settings.openrouter_api_key and "placeholder" not in settings.openrouter_api_key.lower():
                 provider = "openrouter"
@@ -194,7 +194,7 @@ class ProjectAIReviewEngine:
                 )
 
                 response = client.models.generate_content(
-                    model=settings.gemini_model or "gemini-2.5-flash",
+                    model=settings.gemini_model or "gemini-3.8-flash",
                     contents=prompt,
                     config=config,
                 )

@@ -1768,7 +1768,11 @@ export const api = {
     return res.json();
   },
 
-  async sendProjectChatMessage(projectId: string, chatId: string, content: string): Promise<ProjectChatMessage> {
+  async sendProjectChatMessage(
+    projectId: string,
+    chatId: string,
+    content: string
+  ): Promise<{ userMessage?: ProjectChatMessage; assistantMessage: ProjectChatMessage }> {
     const res = await fetch(`${API_BASE}/projects/${projectId}/chats/${chatId}/messages`, {
       method: 'POST',
       headers: getHeaders(true),

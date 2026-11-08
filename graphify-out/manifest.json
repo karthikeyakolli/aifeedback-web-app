@@ -234,10 +234,10 @@
     "semantic_hash": "f8c0a1372d7c6e99d9d06bea23f12082"
   },
   "backend/app/services/ai_orchestrator.py": {
-    "mtime": 1793818257.819967,
-    "seen": 1793970934.493258,
-    "ast_hash": "da4862e7640d61002dff2a15455d3d17",
-    "semantic_hash": "da4862e7640d61002dff2a15455d3d17"
+    "mtime": 1794151294.6504045,
+    "seen": 1794151386.0948896,
+    "ast_hash": "cfc5cfbb202b75e1d61230b9006bdd69",
+    "semantic_hash": ""
   },
   "backend/app/services/analysis_service.py": {
     "mtime": 1793193441.7984242,
@@ -306,14 +306,14 @@
     "semantic_hash": "9e83704e01c4f676274ce4d6c9e3c04f"
   },
   "backend/app/services/project_ai_review_engine.py": {
-    "mtime": 1793807680.8047004,
-    "seen": 1793970934.4932663,
-    "ast_hash": "f048306f29098eb2e08a7758cd7dfd86",
-    "semantic_hash": "f048306f29098eb2e08a7758cd7dfd86"
+    "mtime": 1794151318.4528258,
+    "seen": 1794151386.100435,
+    "ast_hash": "bbf00e4b7a32afca32f062e004ab839b",
+    "semantic_hash": ""
   },
   "backend/app/services/project_chat_service.py": {
-    "mtime": 1794149860.6149116,
-    "seen": 1794149907.1203766,
+    "mtime": 1794150784.280608,
+    "seen": 1794151386.1004407,
     "ast_hash": "0e6fbed8f421567deefd24a90ddceb03",
     "semantic_hash": ""
   },
@@ -876,9 +876,9 @@
     "semantic_hash": ""
   },
   "frontend/src/components/product/ProjectChatTab.tsx": {
-    "mtime": 1794067088.755539,
-    "seen": 1794067847.108657,
-    "ast_hash": "924d4631f06168b3603d880ed431d108",
+    "mtime": 1794151200.9490874,
+    "seen": 1794151386.1505961,
+    "ast_hash": "7ff60231cd78aac8a0f29797db5d4981",
     "semantic_hash": ""
   },
   "frontend/src/components/product/ProjectCompletenessTab.tsx": {
@@ -888,9 +888,9 @@
     "semantic_hash": "e1fd5277665b714d5ad7835b2f7f0256"
   },
   "frontend/src/components/product/ProjectReviewTab.tsx": {
-    "mtime": 1794128175.8349452,
-    "seen": 1794128423.5985641,
-    "ast_hash": "d040ac390888908d1d5f418683040702",
+    "mtime": 1794151214.8517349,
+    "seen": 1794151386.1513612,
+    "ast_hash": "e2706316f8546961724e5fd1a6958c7f",
     "semantic_hash": ""
   },
   "frontend/src/components/product/ProjectSourcesTab.tsx": {
@@ -1134,9 +1134,9 @@
     "semantic_hash": "02291b9f51210ff399aa6010c658ade1"
   },
   "frontend/src/services/api.ts": {
-    "mtime": 1794149616.3806365,
-    "seen": 1794149907.1943362,
-    "ast_hash": "994c5eb43fc07613d25f0d0f74a2fbab",
+    "mtime": 1794151224.42109,
+    "seen": 1794151386.1741056,
+    "ast_hash": "80b11e29983637020c902f586a0f5e26",
     "semantic_hash": ""
   },
   "frontend/src/services/supabase.ts": {

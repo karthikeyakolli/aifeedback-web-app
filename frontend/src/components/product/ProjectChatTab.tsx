@@ -206,7 +206,8 @@ export const ProjectChatTab: React.FC<ProjectChatTabProps> = ({ project }) => {
       return;
     }
 
-    if (!activeChat) {
+    let targetChat = activeChat;
+    if (!targetChat) {
       try {
         const created = await api.createProjectChat(
           project.id,
@@ -214,6 +215,8 @@ export const ProjectChatTab: React.FC<ProjectChatTabProps> = ({ project }) => {
           'project_wide'
         );
         setActiveChat(created);
+        setChats((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
+        targetChat = created;
       } catch (e: any) {
         setErrorMessage(e.message || 'Could not start chat session.');
         return;
@@ -225,7 +228,7 @@ export const ProjectChatTab: React.FC<ProjectChatTabProps> = ({ project }) => {
 
     const tempUserMsg: ProjectChatMessage = {
       id: `temp_${Date.now()}`,
-      chatId: activeChat ? activeChat.id : 'temp',
+      chatId: targetChat.id,
       role: 'user',
       content: text,
       citations: [],
@@ -235,12 +238,20 @@ export const ProjectChatTab: React.FC<ProjectChatTabProps> = ({ project }) => {
     setMessages((prev) => [...prev, tempUserMsg]);
 
     try {
-      const assistantMsg = await api.sendProjectChatMessage(
+      const resp = await api.sendProjectChatMessage(
         project.id,
-        activeChat ? activeChat.id : 'main',
+        targetChat.id,
         text
       );
-      setMessages((prev) => [...prev, assistantMsg]);
+      // The backend returns { userMessage, assistantMessage } or direct assistantMessage
+      const assistant: ProjectChatMessage = (resp as any).assistantMessage || resp;
+      const verifiedUser: ProjectChatMessage | undefined = (resp as any).userMessage;
+
+      setMessages((prev) => [
+        ...prev.filter((m) => m.id !== tempUserMsg.id),
+        verifiedUser || tempUserMsg,
+        assistant,
+      ]);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to synthesize assistant response.');
     } finally {

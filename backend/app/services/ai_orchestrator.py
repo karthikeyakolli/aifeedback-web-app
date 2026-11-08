@@ -173,7 +173,7 @@ class AIOrchestratorService:
                 logger.info("Attempting project feedback generation via provider '%s'...", provider)
                 model_id = "unknown"
                 if provider == "gemini":
-                    model_id = getattr(settings, "gemini_model", "gemini-2.5-flash")
+                    model_id = getattr(settings, "gemini_model", "gemini-3.8-flash")
                     proposal = self._call_gemini(project, focus, api_key)
                 elif provider == "openrouter":
                     model_id = getattr(settings, "openrouter_model", "meta-llama/llama-3.3-70b-instruct:free")
@@ -282,7 +282,7 @@ class AIOrchestratorService:
             temperature=0.2,
         )
 
-        model_name = settings.gemini_model or "gemini-2.5-flash"
+        model_name = settings.gemini_model or "gemini-3.8-flash"
         response = client.models.generate_content(
             model=model_name,
             contents=prompt,
