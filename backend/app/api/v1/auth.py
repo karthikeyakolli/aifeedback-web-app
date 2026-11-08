@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any, List, Optional
 import urllib.request
 import urllib.error
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from backend.app.config import settings
 
@@ -58,7 +58,7 @@ def _confirm_supabase_user_by_email(email: str) -> bool:
 
 
 class EmailConfirmPayload(BaseModel):
-    email: EmailStr
+    email: str
 from backend.app.schemas.auth import (
     UserRegisterRequest,
     UserLoginRequest,
