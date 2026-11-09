@@ -40,6 +40,9 @@ jobs:
         env:
           NODE_ENV: production
           VITE_BASE_PATH: /aifeedback-web-app/
+          VITE_API_URL: https://aifeedback-web-app.onrender.com/api/v1
+          VITE_SUPABASE_URL: https://bwqeprsagyrkxwpxdfvk.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3cWVwcnNhZ3lya3h3cHhkZnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0MTE2MjgsImV4cCI6MjEwODk4NzYyOH0.yEIcaQHUujWeDaGAl60kl59YOaxbppr8LyiB-SuJ3Ts
         run: npm run build
 
       - name: Upload artifact

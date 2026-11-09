@@ -5,7 +5,6 @@ import {
   Mail,
   User,
   Sparkles,
-  AlertCircle,
   ArrowRight,
   CheckCircle2,
   KeyRound,
@@ -17,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { isSupabaseConfigured } from '../../services/supabase';
 import { Button } from '../common/Button';
+import { AuthWarningCard } from './AuthWarningCard';
 
 export const AuthModal: React.FC = () => {
   const {
@@ -27,6 +27,7 @@ export const AuthModal: React.FC = () => {
     signup,
     loginWithGoogle,
     loginWithGitHub,
+    quickLoginDev,
   } = useAuth();
 
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'reset'>(authModalMode);
@@ -160,8 +161,6 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  const isEmailExisting = error?.toLowerCase().includes('already exists') || error?.toLowerCase().includes('already registered');
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
@@ -242,27 +241,27 @@ export const AuthModal: React.FC = () => {
           </div>
         )}
 
-        {/* Error notification banner */}
+        {/* Redesigned Warning / Error Banner */}
         {error && (
-          <div className="mx-6 mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 space-y-1.5">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
-              <span className="leading-relaxed font-medium">{error}</span>
-            </div>
-            {isEmailExisting && mode === 'signup' && (
-              <div className="pt-1 pl-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('login');
-                    setError(null);
-                  }}
-                  className="text-xs font-bold text-[var(--accent)] hover:underline inline-flex items-center gap-1 cursor-pointer"
-                >
-                  Switch to Sign In →
-                </button>
-              </div>
-            )}
+          <div className="mx-6 mt-4">
+            <AuthWarningCard
+              error={error}
+              email={email}
+              onRetry={() => {
+                setError(null);
+                handleSubmit(new Event('submit') as any);
+              }}
+              onAutoVerified={() => {
+                setError(null);
+                handleSubmit(new Event('submit') as any);
+              }}
+              onQuickDemoLogin={quickLoginDev ? () => quickLoginDev('creator') : undefined}
+              onSwitchMode={(newMode) => {
+                setError(null);
+                setMode(newMode);
+              }}
+              onDismiss={() => setError(null)}
+            />
           </div>
         )}
 

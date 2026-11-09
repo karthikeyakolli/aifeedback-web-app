@@ -133,8 +133,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const { data, error } = await supabase.auth.signInWithPassword({ email, password });
             if (!error && data.session) {
               setStoredToken(data.session.access_token);
-              const u = await api.getCurrentUser();
-              setUser(u);
+              try {
+                const u = await api.getCurrentUser();
+                setUser(u);
+              } catch {
+                // If backend is waking up, construct authenticated profile from verified Supabase session
+                const meta = data.session.user.user_metadata || {};
+                setUser({
+                  id: data.session.user.id,
+                  email: data.session.user.email || email,
+                  username: meta.username || email.split('@')[0],
+                  displayName: meta.display_name || meta.full_name || email.split('@')[0],
+                  avatarUrl: meta.avatar_url || null,
+                  bio: '',
+                  reputationScore: 100,
+                  verifiedDeveloper: false,
+                  createdAt: data.session.user.created_at || new Date().toISOString(),
+                } as any);
+              }
               closeAuthModal();
               return;
             } else if (error) {

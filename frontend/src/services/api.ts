@@ -102,6 +102,33 @@ const getHeaders = (includeAuth: boolean = true): HeadersInit => {
   return headers;
 };
 
+async function fetchWithNetworkHandling(
+  url: string,
+  options: RequestInit,
+  retries: number = 1
+): Promise<Response> {
+  try {
+    return await fetch(url, options);
+  } catch (err: any) {
+    const isNetworkError =
+      err.name === 'TypeError' ||
+      String(err.message || '').toLowerCase().includes('failed to fetch') ||
+      String(err.message || '').toLowerCase().includes('networkerror');
+
+    if (isNetworkError && retries > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return fetchWithNetworkHandling(url, options, retries - 1);
+    }
+
+    if (isNetworkError) {
+      throw new Error(
+        'Unable to reach the server. The live backend may be waking up from sleep (~30s) or your internet connection was interrupted. Please retry in a few moments.'
+      );
+    }
+    throw err;
+  }
+}
+
 export const api = {
   // ---------------------------------------------------------------------------
   // Authentication & Session
@@ -113,7 +140,7 @@ export const api = {
     displayName: string;
     bio?: string;
   }): Promise<AuthResponse> {
-    const res = await fetch(`${API_BASE}/auth/signup`, {
+    const res = await fetchWithNetworkHandling(`${API_BASE}/auth/signup`, {
       method: 'POST',
       headers: getHeaders(false),
       body: JSON.stringify({
@@ -134,7 +161,7 @@ export const api = {
   },
 
   async login(data: { email: string; password: string }): Promise<AuthResponse> {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetchWithNetworkHandling(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: getHeaders(false),
       body: JSON.stringify(data),
@@ -149,7 +176,7 @@ export const api = {
   },
 
   async confirmEmail(email: string): Promise<{ status: string; message: string }> {
-    const res = await fetch(`${API_BASE}/auth/confirm-email`, {
+    const res = await fetchWithNetworkHandling(`${API_BASE}/auth/confirm-email`, {
       method: 'POST',
       headers: getHeaders(false),
       body: JSON.stringify({ email }),
@@ -166,7 +193,7 @@ export const api = {
     if (!token) {
       throw new Error('No authentication token found');
     }
-    const res = await fetch(`${API_BASE}/auth/me`, {
+    const res = await fetchWithNetworkHandling(`${API_BASE}/auth/me`, {
       headers: getHeaders(true),
     });
     if (!res.ok) {

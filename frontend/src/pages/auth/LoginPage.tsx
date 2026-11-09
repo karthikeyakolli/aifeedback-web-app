@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Sparkles, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Sparkles, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { isSupabaseConfigured } from '../../services/supabase';
 import { Button } from '../../components/common/Button';
 import { AuthVisualPanel } from './AuthVisualPanel';
+import { AuthWarningCard } from '../../components/auth/AuthWarningCard';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loginWithGoogle, isAuthenticated } = useAuth();
+  const { login, loginWithGoogle, isAuthenticated, quickLoginDev } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -94,25 +95,23 @@ export const LoginPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Error Banner */}
+            {/* Redesigned Warning / Error Banner */}
             {error && (
-              <div
-                role="alert"
-                className="mb-6 p-3.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2.5"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-                <div className="leading-relaxed flex-1">
-                  <div>{error}</div>
-                  {(error.toLowerCase().includes('confirm') || error.toLowerCase().includes('verif')) && (
-                    <Link
-                      to={`/verify-email?email=${encodeURIComponent(email)}`}
-                      className="mt-1.5 inline-block font-bold text-indigo-600 dark:text-indigo-400 underline hover:opacity-85"
-                    >
-                      Click here to instantly verify your email address →
-                    </Link>
-                  )}
-                </div>
-              </div>
+              <AuthWarningCard
+                error={error}
+                email={email}
+                onRetry={() => {
+                  setError(null);
+                  handleSubmit(new Event('submit') as any);
+                }}
+                onAutoVerified={() => {
+                  setError(null);
+                  handleSubmit(new Event('submit') as any);
+                }}
+                onQuickDemoLogin={quickLoginDev ? () => quickLoginDev('creator') : undefined}
+                onDismiss={() => setError(null)}
+                className="mb-6"
+              />
             )}
 
             {/* Google OAuth Login */}
