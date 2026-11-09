@@ -6,9 +6,9 @@
     "semantic_hash": ""
   },
   ".github/workflows/deploy-pages.yml": {
-    "mtime": 1794225880.66688,
-    "seen": 1794226295.7303636,
-    "ast_hash": "a4ee061f2c75cbf71271431c426c2109",
+    "mtime": 1794230908.7513933,
+    "seen": 1794230991.2074416,
+    "ast_hash": "3745db6a3ae9ffe60b471a5ac5f0c9da",
     "semantic_hash": ""
   },
   "backend/__init__.py": {
@@ -3507,6 +3507,30 @@
     "mtime": 1794230583.7340531,
     "seen": 1794230645.3394628,
     "ast_hash": "93039f82396e27fc38b6e787da0051ed",
+    "semantic_hash": ""
+  },
+  "docs/assets/index-Cwmh5e-w.js": {
+    "mtime": 1794230492.0978954,
+    "seen": 1794230991.2590895,
+    "ast_hash": "1484bc83c19c3ea216203c20f4401711",
+    "semantic_hash": ""
+  },
+  "docs/index.html": {
+    "mtime": 1794230492.0998955,
+    "seen": 1794230991.3442514,
+    "ast_hash": "0f2730b961f03c167f68ed2324cc0413",
+    "semantic_hash": ""
+  },
+  "docs/favicon.svg": {
+    "mtime": 1793179735.1401227,
+    "seen": 1794230991.5046911,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": ""
+  },
+  "docs/icons.svg": {
+    "mtime": 1793179735.1826735,
+    "seen": 1794230991.5046973,
+    "ast_hash": "3b4fcfcf393eca4d264dca4a4663bc37",
     "semantic_hash": ""
   },
   "frontend/package-lock.json": {
