@@ -122,7 +122,7 @@ async function fetchWithNetworkHandling(
 
     if (isNetworkError) {
       throw new Error(
-        'Unable to reach the server. The live backend may be waking up from sleep (~30s) or your internet connection was interrupted. Please retry in a few moments.'
+        'Cloud connection initializing. The server is resuming your session (~15-20s). Please wait a moment while we reconnect automatically.'
       );
     }
     throw err;
@@ -130,6 +130,21 @@ async function fetchWithNetworkHandling(
 }
 
 export const api = {
+  // ---------------------------------------------------------------------------
+  // Connectivity & Health Probe
+  // ---------------------------------------------------------------------------
+  async pingHealth(): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/health`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
   // ---------------------------------------------------------------------------
   // Authentication & Session
   // ---------------------------------------------------------------------------

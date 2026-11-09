@@ -1,0 +1,24 @@
+name: Cloud Backend Keep-Alive
+
+on:
+  schedule:
+    # Runs every 10 minutes to prevent Render free-tier from idling/spinning down
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: 'keep-alive'
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Ping Live Health Endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping Render Backend Service
+        run: |
+          echo "Pinging live API health endpoint..."
+          curl -s -S -f --max-time 45 --retry 2 --retry-delay 3 "https://aifeedback-web-app.onrender.com/api/v1/health" || \
+          curl -s -S -f --max-time 45 --retry 2 --retry-delay 3 "https://aifeedback-web-app.onrender.com/api/health" || \
+          echo "Keep-alive ping completed or waking up container."

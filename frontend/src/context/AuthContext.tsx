@@ -130,8 +130,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // 2. Fallback to Supabase if configured and local user not found
         if (isSupabaseConfigured() && supabase) {
           try {
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-            if (!error && data.session) {
+            const { data, error: sbError } = await supabase.auth.signInWithPassword({ email, password });
+            if (!sbError && data.session) {
               setStoredToken(data.session.access_token);
               try {
                 const u = await api.getCurrentUser();
@@ -153,14 +153,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }
               closeAuthModal();
               return;
-            } else if (error) {
-              const sbMsg = error.message.toLowerCase();
+            } else if (sbError) {
+              const sbMsg = sbError.message.toLowerCase();
               if (sbMsg.includes('confirm') || sbMsg.includes('unconfirmed')) {
-                await api.confirmEmail(email);
-                const retryRes = await api.login({ email, password });
-                setUser(retryRes.user);
-                closeAuthModal();
-                return;
+                try {
+                  await api.confirmEmail(email);
+                  const retryRes = await api.login({ email, password });
+                  setUser(retryRes.user);
+                  closeAuthModal();
+                  return;
+                } catch {
+                  // continue
+                }
+              }
+              // If localErr was a network connection timeout, but Supabase actively rejected credentials:
+              if (sbMsg.includes('invalid') || sbMsg.includes('credentials')) {
+                throw new Error('Invalid email or password. Please verify your credentials.');
               }
             }
           } catch (sbErr: any) {
@@ -175,6 +183,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch {
                 // bubble original error
               }
+            }
+            if (sbMsg.includes('invalid') || sbMsg.includes('credentials')) {
+              throw new Error('Invalid email or password. Please verify your credentials.');
             }
           }
         }
@@ -260,13 +271,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Auto-confirm email so user is never stranded waiting for rate-limited / non-functional SMTP
             try {
               await api.confirmEmail(data.email);
-              await login(data.email, data.password);
-              return;
             } catch {
-              throw new Error(
-                'Account registered successfully! You may now sign in with your email and password.'
-              );
+              // continue
             }
+
+            try {
+              const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+                email: data.email,
+                password: data.password,
+              });
+              if (!signInError && signInData.session) {
+                setStoredToken(signInData.session.access_token);
+                setUser({
+                  id: authData.user.id,
+                  email: data.email,
+                  username: data.username,
+                  displayName: data.displayName,
+                  avatarUrl: null,
+                  bio: data.bio || '',
+                  reputationScore: 100,
+                  verifiedDeveloper: false,
+                  createdAt: new Date().toISOString(),
+                } as any);
+                closeAuthModal();
+                return;
+              }
+            } catch {
+              // continue
+            }
+
+            throw new Error(
+              'Account registered successfully! You may now sign in with your email and password.'
+            );
           }
         } catch (sbErr: any) {
           if (sbErr.message && !sbErr.message.includes('fetch')) {

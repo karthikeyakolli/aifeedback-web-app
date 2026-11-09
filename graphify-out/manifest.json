@@ -144,9 +144,9 @@
     "semantic_hash": ""
   },
   "backend/app/main.py": {
-    "mtime": 1794225866.5524836,
-    "seen": 1794226295.736692,
-    "ast_hash": "17d49c102c8166f0fff56035cf98474c",
+    "mtime": 1794230248.721933,
+    "seen": 1794230645.314176,
+    "ast_hash": "b0f8373975508f8c270b07711669f57d",
     "semantic_hash": ""
   },
   "backend/app/schemas/__init__.py": {
@@ -576,14 +576,14 @@
     "semantic_hash": ""
   },
   "frontend/src/App.tsx": {
-    "mtime": 1794066033.0865307,
-    "seen": 1794067847.0984128,
-    "ast_hash": "98f4c3887d43470732216562aa1cf747",
+    "mtime": 1794230400.6246607,
+    "seen": 1794230645.352992,
+    "ast_hash": "aa069d2d7c49134c105048da7c382ced",
     "semantic_hash": ""
   },
   "frontend/src/components/auth/AuthModal.tsx": {
-    "mtime": 1794226196.9608476,
-    "seen": 1794226295.7585962,
+    "mtime": 1794229346.7300515,
+    "seen": 1794230645.3529975,
     "ast_hash": "3609979c0a4742aa2da2075eabee465a",
     "semantic_hash": ""
   },
@@ -912,9 +912,9 @@
     "semantic_hash": ""
   },
   "frontend/src/context/AuthContext.tsx": {
-    "mtime": 1794225934.6461213,
-    "seen": 1794226295.7742374,
-    "ast_hash": "2f90841ce288bea72db5234def95233e",
+    "mtime": 1794230479.056778,
+    "seen": 1794230645.380541,
+    "ast_hash": "9662ccef80f9a413e0586ed19c94204c",
     "semantic_hash": ""
   },
   "frontend/src/context/SpaceContext.tsx": {
@@ -1068,14 +1068,14 @@
     "semantic_hash": "7dc75a61e75a9cd27353fac4ad995157"
   },
   "frontend/src/pages/auth/LoginPage.tsx": {
-    "mtime": 1794226027.3695538,
-    "seen": 1794226295.7829864,
+    "mtime": 1794229346.9973826,
+    "seen": 1794230645.393703,
     "ast_hash": "47a354ccfd3fa081e973ad08aefcdda0",
     "semantic_hash": ""
   },
   "frontend/src/pages/auth/SignupPage.tsx": {
-    "mtime": 1794226130.8323934,
-    "seen": 1794226295.782993,
+    "mtime": 1794229347.084149,
+    "seen": 1794230645.3937085,
     "ast_hash": "c9a4e7f2235a410b299396e881591e34",
     "semantic_hash": ""
   },
@@ -1134,14 +1134,14 @@
     "semantic_hash": "02291b9f51210ff399aa6010c658ade1"
   },
   "frontend/src/services/api.ts": {
-    "mtime": 1794225918.8399675,
-    "seen": 1794226295.7855968,
-    "ast_hash": "fa528cdb4d4d328a160a7f1f5fa1e5cb",
+    "mtime": 1794230367.224345,
+    "seen": 1794230645.3989491,
+    "ast_hash": "b5b5128932f1bfdf15032da78f8fd7b6",
     "semantic_hash": ""
   },
   "frontend/src/services/supabase.ts": {
-    "mtime": 1794225892.8983116,
-    "seen": 1794226295.7856007,
+    "mtime": 1794229347.3196385,
+    "seen": 1794230645.3989563,
     "ast_hash": "8f38eac3fe011595cd20312eb73cb133",
     "semantic_hash": ""
   },
@@ -3486,9 +3486,27 @@
     "semantic_hash": ""
   },
   "frontend/src/components/auth/AuthWarningCard.tsx": {
-    "mtime": 1794226211.1780999,
-    "seen": 1794226295.7586045,
-    "ast_hash": "571023cbf75ae731fb39767d096d30df",
+    "mtime": 1794230438.2775981,
+    "seen": 1794230645.3530037,
+    "ast_hash": "34491a2b622bf64ff16fd9e0eeb1ec51",
+    "semantic_hash": ""
+  },
+  ".github/workflows/keep-alive.yml": {
+    "mtime": 1794230255.6170645,
+    "seen": 1794230645.302898,
+    "ast_hash": "f9f441fb3055c89946ca8ffea075de93",
+    "semantic_hash": ""
+  },
+  "backend/app/services/keep_alive.py": {
+    "mtime": 1794230241.3292577,
+    "seen": 1794230645.3261778,
+    "ast_hash": "83e9da600051eea9da5175a583766176",
+    "semantic_hash": ""
+  },
+  "backend/tests/test_keep_alive.py": {
+    "mtime": 1794230583.7340531,
+    "seen": 1794230645.3394628,
+    "ast_hash": "93039f82396e27fc38b6e787da0051ed",
     "semantic_hash": ""
   },
   "frontend/package-lock.json": {

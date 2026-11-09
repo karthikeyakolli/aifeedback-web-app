@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
@@ -37,6 +38,15 @@ import { AuthModal } from './components/auth/AuthModal';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 export function App() {
+  useEffect(() => {
+    // Eagerly pre-warm backend so any standby instance begins waking up before user interactions
+    const prewarmUrl = import.meta.env.VITE_API_URL
+      ? `${import.meta.env.VITE_API_URL}/health`
+      : 'https://aifeedback-web-app.onrender.com/api/v1/health';
+
+    fetch(prewarmUrl, { mode: 'no-cors', keepalive: true }).catch(() => {});
+  }, []);
+
   return (
     <ThemeProvider>
       <AuthProvider>

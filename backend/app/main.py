@@ -34,6 +34,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.review_worker_enabled:
         review_worker.start()
 
+    # Cloud Keep-Alive Daemon (Prevents inactivity idle spin-down on Render)
+    from backend.app.services.keep_alive import keep_alive_daemon
+    keep_alive_daemon.start()
+
     # Ensure baseline community posts and demo data if database is fresh
     try:
         from backend.app.db.connection import db_manager
@@ -48,6 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
+    keep_alive_daemon.stop()
     if settings.review_worker_enabled:
         review_worker.stop()
     logger.info("Shutting down Product Research Intelligence API.")
